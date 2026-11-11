@@ -14,6 +14,9 @@ Commands are ASCII, each ending in a newline; without the newline there's no rep
 | `FTnn` | `FTnn!` | Sets the fan target. Use **two decimal digits** (`FT31`); hex such as `FT1f` is ignored. |
 | `FA.` | `FA24!` | Fan **actual** level. It ramps towards the target over a few seconds. |
 | `FD.` | `FD01!` | Fan default |
+| `K` | `k` | "CPU awake" (vxWorks' `pmuCpuAwake`, sent once from `usrAppInit2`). Until the PMU hears it, a press of the power button cuts power at once. |
+| `S` | `s` | Shut down now (`pmuShutdownNow`): the PMU cuts main power about a second later. |
+| `A` | — | Abort a shutdown (`pmuShutdownAbort`, used by `bspHibernate` and the thermal code). Not tried. |
 
 The fan commands come from vxWorks' `pmuFanDefault`, `pmuFanTarget` and `pmuFanActual`. Strings in the firmware name more PMU variables, which U-Boot's `pv <char>` can reach:
 - CPU, disk and PMU temperatures, each with a set point and an over-temperature threshold
@@ -36,5 +39,6 @@ Only one program should talk to the port at a time; two at once got jumbled repl
 ## Power button
 
 - Under vxWorks, one press logs `ISR: PMU PowerDownReq` and starts a clean shutdown. The LED blinks in threes, speeds up, then goes out.
-- **Under mainline Linux the button is ignored**, probably because nothing answers the PMU the way vxWorks does. A Linux `poweroff` ends with "Power off not available: System halted instead", so the power has to be removed by hand. The shutdown handshake hasn't been worked out.
+- The request is **SoC GPIO 40** (`bspIsPowerDownReq` reads GPIO bank 1, mask `0x100`; it's `gpiochip1` line 8 under Linux). It goes high on a press, but **only after the CPU has sent `K`**. Before that, a press makes the PMU cut power immediately. That was seen under Linux on 11 Nov: an instant power cut with the root mounted.
+- The kit's `drobo-powerbtn` service sends `K` at boot, waits for GPIO 40 to rise, and runs `systemctl poweroff`. A systemd shutdown hook sends `S` once the filesystems are read-only. Tested on 11 Nov: one short press gives a red power LED, a clean shutdown, and power off in about 5 s. Linux's own power-off still says "Power off not available"; the hook cuts power before it gets there.
 - From standby, a short press (300 ms) powers the board on.

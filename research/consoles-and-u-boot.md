@@ -24,6 +24,8 @@ UART2 (`0xD0012200`) goes to the PMU at 38400 baud ([pmu-protocol.md](pmu-protoc
 ### Stock behaviour
 
 - **Catching autoboot:** with `bootdelay=0` it checks for a key only once, at "Hit any key to stop autoboot". To catch it reliably, send a space continuously from power-on (every 100 ms worked), then run `setenv bootdelay 3; saveenv`.
+- **Hush shell:** `if`/`then`/`else`, `||`, `test`, `itest` and `source` (U-Boot script images from `mkimage -T script`) all work, and `run a b c` stops at the first command that fails and returns failure. There's no `setexpr`. **`test` drops empty quoted strings:** with `x` unset, `test "$x" = "1"` is *true*, so compare `"x$x" = "x1"`.
+- **`gpio s|c <n>`** makes the pin an output and drives it; `gpio s 28; gpio s 35` lights the power LED yellow from U-Boot.
 - **`amp_enable=yes` rewrites `bootcmd=amp_boot` on every boot**, whatever you saved. With `amp_enable=no`, a saved `bootcmd` survives a reset. `amp_boot` with no vxWorks to load hangs the board, and the power button may not get it out of that.
 - **Drobo's AMP rules:** with `amp_enable=yes`, `bootm` enforces Drobo's AMP layout ("Load address != mem base + 0x8000"). Even with AMP off, it takes the kernel command line from `bootargs_g0`, not `bootargs`.
 - **`bootm` never reaches a modern kernel's entry point:** a probe stub placed at the entry point never ran.
