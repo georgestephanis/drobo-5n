@@ -1,5 +1,10 @@
 # Drobo 5N to Debian
 
+> [!NOTE]
+> **AI disclosure.** This project was done by George Stephanis working with Claude (Anthropic's **Claude Opus 5.5**, in Claude Code). Claude wrote most of the scripts, the boot stub and this guide, and ran commands on the Drobo over its serial console and SSH. George did the hardware side: opening the case, wiring the serial consoles and a Raspberry Pi Pico bridge, power-cycling and recovering the board, swapping fans, and checking results by eye and ear. He set the goals and constraints and reviewed what was published.
+>
+> The working sessions add up to roughly **13–14 hours over three days (9–11 November 2026)**, with George at the bench for nearly all of it (about 240 messages back and forth), plus hardware time of his outside the sessions. Every step in this guide has run on real hardware: one Drobo 5N, across a few dozen boots, many of them failures along the way. The full log of what was tried, including the dead ends, is in the [project write-up](https://celestial-star.space.fast/).
+
 How to replace Drobo OS on a Drobo 5N with plain Debian 13 that boots by itself, from the Drobo's own U-Boot, with no flashing of the bootloader. This is the short path. The long version, with every dead end, is in the [project write-up](https://celestial-star.space.fast/).
 
 > [!TIP]
