@@ -45,7 +45,9 @@ For what we learned about the hardware, U-Boot, the power controller and the sto
 | [`drobo5n-base.dts`](kit/drobo5n-base.dts) | both | The board's device tree (no MAC in it; you add yours) |
 | [`stub.bin`](kit/stub.bin) ([`stub.S`](kit/stub.S)) | U-Boot | A small trampoline that cleans up after U-Boot and enters the kernel. Build with `arm-none-eabi-gcc -march=armv7-a -marm -DCOPY -DIMG_LEN=0 -DDEST=0x01208000 -DDTB_ADDR=0x03f00000` |
 | [`install-on-stick.sh`](kit/install-on-stick.sh) | the Drobo | Installs everything below and builds `/boot/drobo` |
-| [`mkdrobokernel`](kit/mkdrobokernel), [`postinst-hook`](kit/postinst-hook), [`drobo-boot-ok`](kit/drobo-boot-ok.sh) | the Drobo | Rebuild the boot files whenever Debian installs a kernel or initrd, keeping the last set that booted in `prev` |
+| [`mkdrobokernel`](kit/mkdrobokernel), [`postinst-hook`](kit/postinst-hook), [`drobo-boot-ok`](kit/drobo-boot-ok.sh) | the Drobo | Rebuild the boot files whenever Debian installs a kernel or initrd, keeping the last set that booted in `prev`; restore `prev` if U-Boot had to fall back |
+| [`uboot-fallback.txt`](kit/uboot-fallback.txt) | U-Boot | The boot command: power LED on, current set, `prev` on failure, one trial boot of a new set |
+| [`drobo-powerbtn`](kit/drobo-powerbtn.sh), [`drobo-pmu-poweroff`](kit/drobo-pmu-poweroff.sh), [`drobo-watchdog.conf`](kit/drobo-watchdog.conf) | the Drobo | Power button → clean shutdown, `poweroff` cuts power, watchdog resets a hung system |
 | [`mkdrobodtb`](kit/mkdrobodtb), [`drobo5n-fixups.dtsi`](kit/drobo5n-fixups.dtsi) | the Drobo | Device tree fixups: drive-bay expanders, mSATA power, unused Ethernet ports off |
 | [`drobo-pmu.sh`](kit/drobo-pmu.sh), [`drobo-fand.sh`](kit/drobo-fand.sh), [`drobo-fan.service`](kit/drobo-fan.service) | the Drobo | Talk to the power-management chip; temperature-controlled fan |
 | [`drobo-bays.sh`](kit/drobo-bays.sh), [`drobo-bays.service`](kit/drobo-bays.service) | the Drobo | Power the bays that hold a disk at boot, a few seconds apart |
@@ -182,7 +184,21 @@ setenv dbu1 bootm b800000
 setenv dbu2 bootm c000000
 setenv dbu3 bootm c800000
 setenv dbu4 bootm d000000
-setenv bootcmd run dbusb dbdtb dbini dbk0 dbk1 dbk2 dbk3 dbk4 dbu0 dbu1 dbu2 dbu3 dbu4 dbstop dbgo
+setenv dbpdtb ext2load usb 0:1 3f00000 /boot/drobo/prev/drobo5n.dtb
+setenv dbpini ext2load usb 0:1 4000000 /boot/drobo/prev/initrd
+setenv dbpk0 ext2load usb 0:1 b000000 /boot/drobo/prev/kernel.0
+setenv dbpk1 ext2load usb 0:1 b800000 /boot/drobo/prev/kernel.1
+setenv dbpk2 ext2load usb 0:1 c000000 /boot/drobo/prev/kernel.2
+setenv dbpk3 ext2load usb 0:1 c800000 /boot/drobo/prev/kernel.3
+setenv dbpk4 ext2load usb 0:1 d000000 /boot/drobo/prev/kernel.4
+setenv dbcur 'run dbdtb dbini dbk0 dbk1 dbk2 dbk3 dbk4 dbu0 dbu1 dbu2 dbu3 dbu4'
+setenv dbprv 'echo DROBO: booting prev; run dbpdtb dbpini dbpk0 dbpk1 dbpk2 dbpk3 dbpk4 dbu0 dbu1 dbu2 dbu3 dbu4'
+setenv dbboot 'run dbstop dbgo'
+setenv dbnorm 'run dbcur dbboot || run dbprv dbboot'
+setenv dbtrial 'if test "x$dbtry" = "x$dbtrialid"; then echo DROBO: trial $dbtrialid failed; run dbprv dbboot; else echo DROBO: trial boot $dbtrialid; setenv dbtry $dbtrialid; saveenv; run dbcur dbboot || run dbprv dbboot; fi'
+setenv dbled 'gpio s 28; gpio s 35'
+setenv dbsel 'run dbled; setenv dbtrialid; run dbusb; if ext2load usb 0:1 1000000 /boot/drobo/trial; then source 1000000; run dbtrial; else run dbnorm; fi'
+setenv bootcmd 'run dbsel'
 printenv bootcmd amp_enable
 saveenv
 reset
@@ -190,6 +206,8 @@ reset
 
 > [!WARNING]
 > **`amp_enable no` is essential.** With it set to `yes` (the stock value), Marvell's start-up code puts `bootcmd=amp_boot` back on every boot, whatever you saved. `amp_boot` then looks for vxWorks, doesn't find it, and hangs the board, and the power button may not get it out of that. Before trusting the change, catch U-Boot after the `reset` and check that `printenv bootcmd` still shows your line.
+
+The second half of that list (also in [`kit/uboot-fallback.txt`](kit/uboot-fallback.txt)) is the fallback. `dbsel` lights the power LED yellow, then boots the current set in `/boot/drobo`. If any file fails to load, it boots `/boot/drobo/prev` instead. When `mkdrobokernel` installs a new set, it leaves a flag file, `/boot/drobo/trial`, a tiny U-Boot script that sets `dbtrialid`. U-Boot saves `dbtry=<that id>` and tries the new set once. If the flag is still there on the next boot, that try didn't come up (with `panic=10` a failed boot resets the board), so U-Boot boots `prev`. Paste the lines exactly: this U-Boot's `test` drops empty quoted strings, which is why the comparisons use `"x$dbtry"`.
 
 From now on the Drobo boots Debian by itself. U-Boot reads about 20 MB from the stick (around 80 seconds; it's slow), unpacks the kernel pieces, and jumps. Debian is on SSH about 2½ minutes after power-on.
 
@@ -205,17 +223,34 @@ cat /sys/class/hwmon/hwmon*/temp1_input  # SoC (and disk) temperatures, millideg
 
 - **Drive bays.** Bays are numbered 0 (top) to 4 (bottom). At boot, `drobo-bays` powers every bay that holds a disk, 4 s apart. The disks then appear as ordinary SATA disks (`/dev/sdb`…). Use them with whatever you like: ext4, mdadm, mergerfs and SnapRAID, or OpenMediaVault. Drobo's BeyondRAID disk packs are not readable. `sudo drobo-bays on` rescans after you insert a disk; `off` powers all bays down.
 - **Fan.** `drobo-fand` sets the speed (01–31) from the hottest sensor, resent every 30 s. The power controller winds the speed down by itself if nobody keeps setting it. It never goes below 16, because the stock fan's bearing can stall at low speed. Tune it in `/etc/default/drobo-fan`, for example `FLOOR=12 SOC_HI=70`. If the fan doesn't start after a cold boot, give it a nudge, or replace it.
-- **Kernel updates.** After `apt upgrade` installs a kernel or rebuilds an initrd, the hook rebuilds `/boot/drobo`. A minute after each good boot, `drobo-boot-ok` records that set's checksums, and `mkdrobokernel` only moves a set into `/boot/drobo/prev` if it has booted, so `prev` is always a known-good fallback even though Debian runs the hook twice per kernel install. It also refuses to build with less than 50 MB free. Tested on 11 Nov by reinstalling the kernel package through apt and rebooting; a new kernel version hasn't come out since.
-- **Stick wear.** Root is on a 1 GB USB flash stick. Keep writes down: no swap, `noatime` (the installer's default), and consider `Storage=volatile` or a small `SystemMaxUse` in `/etc/systemd/journald.conf`. You can also move root to a disk: an mSATA SSD in the slot under the board, or a bay disk. The kernel, DTB and initrd stay on the stick (U-Boot can only read USB), and only `root=` in the DTB changes.
+- **Kernel updates.** After `apt upgrade` installs a kernel or rebuilds an initrd, the hook rebuilds `/boot/drobo`. Each set's DTB carries an id (`/chosen/drobo,set-id`), the root by UUID, `panic=10` and `fsck.repair=yes`. A minute after boot, `drobo-boot-ok` checks which set booted. If it was the current one, it records its checksums and clears the trial flag; `mkdrobokernel` only moves a set into `prev` after that, so `prev` is always a set that booted (Debian runs the hook twice per install). If U-Boot fell back to `prev`, it moves the broken set to `/boot/drobo/failed`, copies `prev` back as current, and logs a warning (`journalctl -u drobo-boot-ok`). `mkdrobokernel` refuses to build with less than 50 MB free. All of this was tested on 11 Nov, including a set with a wrong root UUID: it panicked, reset, and came back on `prev` with nobody at the console.
+- **Watchdog.** systemd keeps the SoC watchdog running (`RuntimeWatchdogSec=60s`, from `drobo-watchdog.conf`). If the system hangs for a minute, the board resets. A watchdog reset was tested and comes back through U-Boot as normal.
+- **Power button.** A short press on the back does a clean shutdown: the power LED turns red, Linux shuts down, and the power goes off. `drobo-powerbtn` sends the power controller "CPU is up" (`K`) at boot and runs `poweroff` when it raises the power-down request (SoC GPIO 40). `sudo poweroff` also really powers off: the last shutdown step sends the controller `S`. Press the button again to power on.
+- **Root on the mSATA SSD (recommended).** The 1 GB stick is tight and wears out. U-Boot can only read USB, so the boot files stay on the stick and Linux mounts it at `/boot`; everything else moves to the SSD. The old root stays on the stick, and the `prev` boot set still points at it, so a failed switch falls back to it. With an SSD in the slot (power off first; it shows up as `sda`, and the stick moves to `sdb`):
+
+  ```sh
+  printf 'label: gpt\n,,L,\n' | sudo sfdisk /dev/sda        # check it's the SSD first: lsblk
+  sudo mkfs.ext4 -L drobo-root /dev/sda1
+  sudo mkdir -p /mnt/newroot && sudo mount /dev/sda1 /mnt/newroot
+  sudo sh -c 'tar -C / --one-file-system --xattrs --acls -cpf - . | tar -C /mnt/newroot --xattrs --acls -xpf -'
+  sudo mv /mnt/newroot/boot /mnt/newroot/boot.copy-from-stick && sudo mkdir /mnt/newroot/boot /mnt/newroot/media/eusb
+  NEW=$(sudo blkid -s UUID -o value /dev/sda1); STICK=$(findmnt -no UUID /)
+  printf '%s\n' "UUID=$NEW / ext4 noatime,errors=remount-ro 0 1" "UUID=$STICK /media/eusb ext2 noatime 0 2" \
+    "/media/eusb/boot /boot none bind 0 0" | sudo tee /mnt/newroot/etc/fstab
+  sudo umount /mnt/newroot
+  sudo ROOT_UUID=$NEW ROOT_FSTYPE=ext4 mkdrobokernel                   # a trial set with root on the SSD
+  sudo reboot
+  ```
+
+  After the reboot, `findmnt /` should show `/dev/sda1` and `findmnt /boot` should show `/dev/sdb1[/boot]`. Tested on 11 Nov with a 64 GB mSATA SSD. If you stay on the stick instead: no swap, `noatime` (the installer's default), and consider `Storage=volatile` in `/etc/systemd/journald.conf`.
 
 ## 9. Known limitations
 
-- **Power button.** Under Linux the power controller sits in a state where it ignores the power button on the back of the unit. To turn the Drobo off, run `sudo poweroff`, wait for the console to go quiet, then unplug it.
+- **Without `drobo-powerbtn` running** (for example in the installer, or before the service starts), the power controller treats a press of the power button as "nothing is running" and cuts power at once, with no shutdown.
 - **The first 16 MB of RAM** are left unused, because writes below 16 MB hang this board early in boot. That leaves 1.98 GB visible.
-- **Front panel and bay LEDs** aren't driven yet, although the bay LED lines are named in the device tree (`bay0-led-a`…).
 - **Hardware crypto (CESA) is off.** Its hash self-tests fail on Debian's 6.12 kernel, so it's blacklisted; the kernel uses software crypto instead.
 - **Boot is slow**, about 2½ minutes, almost all of it U-Boot reading the stick.
-- **The mSATA slot** is powered from boot (SoC GPIO 66, held high by the device tree). It's expected to be the SoC's second SATA port, `ata2`, but no SSD has been tested in it yet. It isn't hot-swap.
+- **The mSATA slot** is powered from boot (SoC GPIO 66, held high by the device tree). It's the SoC's second SATA port, `ata2`: a 64 GB mSATA SSD came up there at 3 Gbps on 11 Nov and took `sda`, which is why root is found by UUID. It isn't hot-swap: power off first.
 
 ## 10. Troubleshooting
 
@@ -225,9 +260,10 @@ cat /sys/class/hwmon/hwmon*/temp1_input  # SoC (and disk) temperatures, millideg
 | Typing at `Marvell>>` does nothing | The ground wire, a loose connection on J2, or TX/RX swapped. Output working only means RX is fine. |
 | Nothing after `go 8000000` | Make sure you ran `usb stop` first, and that the initrd ends below `0x8000000` (`make-boot-files.py` checks this). |
 | `inflate() returned -5` | A kernel piece is too big for this U-Boot's 8 MB unpack limit. `mkdrobokernel` splits at 7 MiB, so rerun it. |
-| Boots, but can't find root | Make sure root is `/dev/sda1`, ext2. Or, from a TFTP boot of the installer, chroot and set `MODULES=most` in `/etc/initramfs-tools/initramfs.conf`, then `update-initramfs -u`. |
+| Boots, but can't find root | The DTB names root by UUID (`fdtget /boot/drobo/drobo5n.dtb /chosen bootargs`); rerun `mkdrobokernel` after changing the root filesystem. Or, from a TFTP boot of the installer, chroot and set `MODULES=most` in `/etc/initramfs-tools/initramfs.conf`, then `update-initramfs -u`. |
 | A different IP every boot | The MAC isn't in the DTB. Check with `fdtget /usr/local/lib/drobo/drobo5n-base.dtb /soc/internal-regs/ethernet@70000 local-mac-address`. |
-| Need the old kernel | In U-Boot, point the load commands at `/boot/drobo/prev/…` for one boot, e.g. `setenv dbk0 ext2load usb 0:1 b000000 /boot/drobo/prev/kernel.0` (and so on), then `boot`. |
+| Need the old kernel | In U-Boot, `run dbusb dbprv dbboot` boots `/boot/drobo/prev` once. A new set that fails to boot falls back to it by itself. |
+| Power LED stays red, board stays on after `poweroff` | The shutdown hook couldn't reach the power controller. Check `/usr/lib/systemd/system-shutdown/drobo-pmu-poweroff` exists, and hold the button for 6 s. |
 
 ## 11. Going back to Drobo OS
 

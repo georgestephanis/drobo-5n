@@ -1,0 +1,13 @@
+[Unit]
+Description=Drobo 5N rear power button: tell the PMU the CPU is up, power off cleanly on a press
+After=dev-ttyS2.device
+Wants=dev-ttyS2.device
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/drobo-powerbtn
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

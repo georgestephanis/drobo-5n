@@ -10,7 +10,8 @@
 #   drobo5n.dtb           the template DTB with /chosen linux,initrd-end set for this initrd
 # The stub copies the Image to 0x1208000 (nothing may be written below 16 MB on this board) and enters it.
 #
-# Builds into /boot/drobo/new, checks it, then moves the current set to /boot/drobo/prev.
+# Builds into /boot/drobo/new, checks it, then moves the current set to /boot/drobo/prev and sets
+# /boot/drobo/trial so U-Boot tries the new set once (see drobo-boot-ok).
 # Run as root. Debian runs it from /etc/kernel/postinst.d and /etc/initramfs/post-update.d.
 set -eu
 LIB=/usr/local/lib/drobo
@@ -84,6 +85,17 @@ ln -f "$initrd" "$new/initrd"
 cp "$LIB/drobo5n.dtb" "$new/drobo5n.dtb"
 fdtput -t x "$new/drobo5n.dtb" /chosen linux,initrd-start $(printf %x $INITRD_AT)
 fdtput -t x "$new/drobo5n.dtb" /chosen linux,initrd-end $(printf %x $((INITRD_AT + isz)))
+# Root by UUID (a disk in a bay can take sda), panic=10 so a failed boot resets instead of
+# waiting at a shell only the UART can reach, fsck.repair=yes so an unclean ext2 root gets fixed.
+# ROOT_UUID / ROOT_FSTYPE override the running root (used once, to boot a new root on the mSATA).
+uuid=${ROOT_UUID:-$(findmnt -no UUID /)}; fstype=${ROOT_FSTYPE:-$(findmnt -no FSTYPE /)}
+[ -n "$uuid" ] || { echo "mkdrobokernel: can't find the root UUID" >&2; exit 1; }
+args=$(fdtget "$new/drobo5n.dtb" /chosen bootargs | sed -E 's/(^| )(root|rootfstype|panic|fsck\.repair)=[^ ]*//g; s/^ +//')
+fdtput -t s "$new/drobo5n.dtb" /chosen bootargs "$args root=UUID=$uuid rootfstype=$fstype panic=10 fsck.repair=yes"
+# A set id, so drobo-boot-ok can tell which set U-Boot actually booted (current or prev).
+setid="$(date +%Y%m%d%H%M%S)-$v"
+fdtput -t s "$new/drobo5n.dtb" /chosen drobo,set-id "$setid"
+echo "$setid" > "$new/SETID"
 
 # 5. Check: unpacking the pieces again must give back the blob exactly.
 i=0; : > "$tmp/check"
@@ -97,7 +109,7 @@ echo "$v" > "$new/VERSION"
 # 6. Swap in: new -> current. Files U-Boot reads live directly in /boot/drobo.
 # The current set only becomes prev if it has booted (drobo-boot-ok writes $OUT/booted-ok after a good boot).
 # Otherwise (e.g. the hook runs twice in one upgrade) it is simply replaced, so prev is always a set that booted.
-SET="kernel.0 kernel.1 kernel.2 kernel.3 kernel.4 initrd drobo5n.dtb VERSION"
+SET="kernel.0 kernel.1 kernel.2 kernel.3 kernel.4 initrd drobo5n.dtb VERSION SETID"
 if [ -f "$OUT/booted-ok" ] && (cd "$OUT" && md5sum --status -c booted-ok 2>/dev/null); then
   rm -rf "$OUT/prev"; mkdir -p "$OUT/prev"
   for f in $SET; do [ -e "$OUT/$f" ] && mv "$OUT/$f" "$OUT/prev/$f"; done
@@ -108,5 +120,10 @@ else
   echo "mkdrobokernel: current set never booted; replaced it and left $OUT/prev alone"
 fi
 mv "$new"/* "$OUT/"; rmdir "$new"
+# The trial flag is a U-Boot script that sets dbtrialid. U-Boot boots this set once (saving dbtry=<id>);
+# if it finds the flag again with dbtry already equal to the id, that try didn't come up and it boots prev.
+# drobo-boot-ok removes the flag after a good boot.
+printf 'setenv dbtrialid %s\n' "$setid" > "$tmp/trial.txt"
+mkimage -A arm -O linux -T script -C none -n drobo-trial -d "$tmp/trial.txt" "$OUT/trial" > /dev/null
 sync
 echo "mkdrobokernel: $v ready ($ilen byte Image in $(ls "$OUT"/kernel.? | wc -l) pieces, initrd $isz bytes)"
