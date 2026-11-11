@@ -15,7 +15,7 @@ Mainboard `100-00041-001 Rev 3.0` (assembly `200-00038-005`). Firmware strings s
 | SATA | 5 bays plus mSATA. Two Marvell **88SE9122** AHCI controllers (PCI ID `1b4b:9122`; one package was read as `88SE9120-NAA2` from a photo), 2 ports each at 6 Gbps, on `pcie@8,0` (U-Boot's PEX 1.3) and `pcie@9,0` (PEX 2.0). The SoC's own `sata_mv` has two ports: one is the top bay (3 Gbps), and the other is probably the mSATA slot. | confirmed, except mSATA |
 | Temperature | The SoC thermal sensor (`armada_thermal`) works, and `drivetemp` reads disk temperatures under Linux. An LM75B-style part is visible on the board but hasn't been found on a bus yet. | confirmed / likely |
 | Power controller (PMU) | A separate microcontroller on standby power for the power button, fan and temperatures. See [pmu-protocol.md](pmu-protocol.md). | confirmed |
-| Hidden button | A tactile switch beside the power socket, not reachable through the case: **SoC GPIO 65**, active-low (bit 1 of the register at `0xD0018190`). U-Boot has Marvell's recovery feature (`rcvr`, `enaAutoRecovery`), which this button probably triggers at power-on. That hasn't been tried. | GPIO confirmed |
+| Pinhole button | A tactile switch beside the power socket, pressed with a pin through a small hole in the case: **SoC GPIO 65**, active-low (bit 1 of the register at `0xD0018190`). U-Boot has Marvell's recovery feature (`rcvr`, `enaAutoRecovery`), which this button probably triggers at power-on. That hasn't been tried. | GPIO confirmed |
 
 ## Memory map quirks
 
@@ -40,7 +40,7 @@ Mainboard `100-00041-001 Rev 3.0` (assembly `200-00038-005`). Firmware strings s
 | `JP2` (rear, 4-pin) | Stock Linux console (UART1) | footprint; solder a header on |
 | Front-panel cable | 3 wires: red, white and blue. Red drives the button's LED (up to about 1.8 V, a ramping blink). White and blue idle near 3.17 V on standby, and the button joins them. **Neither is ground.** An optocoupler across white (collector) and blue (emitter) gives a clean remote "press". | confirmed |
 | `J7` (backplane) | Fan header: 3 pins, of which the stock fan uses 2 (power and ground). No tach or PWM: the PMU varies the supply voltage. | confirmed |
-| `J19` (underside, 2×8, about 2.0 mm pitch) | Reachable by removing the mSATA cover, without opening the case. Unidentified. Candidates: SoC JTAG, PMU programming, a factory test header. | populated, unidentified |
+| `J19` (underside, 2×4 female, about 2.0 mm pitch) | Reachable by removing the mSATA cover, without opening the case. Unidentified. Candidates: a second internal USB header (the eUSB stick's header is also 2.0 mm female), PMU programming, a UART or test header. | populated, unidentified |
 | `J6` (2×5) | Sized like an ARM JTAG header | footprint, unconfirmed |
 | `J9`, `J10` | 9 signal pads plus shield tabs, the **USB 3.0 Type-A** pinout, next to an unpopulated BGA `U23` (probably a PCIe→USB 3 controller), crystal `Y6` and chokes `L3`–`L6`. Probably USB 3 ports used on another model; adding them would need BGA rework, not just connectors. | footprints, likely |
 | `J15` (60-pin), `J13`/`S1` | Probably a mezzanine connector and its config switch for another model | footprints |
