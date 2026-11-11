@@ -23,6 +23,8 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
 apt-mark manual openssh-server   # so removing the installer's task packages can't take it away
 apt-get clean
 echo 'APT::Keep-Downloaded-Packages "false";' > /etc/apt/apt.conf.d/99drobo-no-cache
+printf '%s\n' 'Dir::Cache::pkgcache "";' 'Dir::Cache::srcpkgcache "";' > /etc/apt/apt.conf.d/99drobo-no-pkgcache   # saves ~84 MB
+rm -f /var/cache/apt/pkgcache.bin /var/cache/apt/srcpkgcache.bin
 
 echo "== tools"
 mkdir -p $LIB /etc/kernel/postinst.d /etc/initramfs/post-update.d
@@ -33,10 +35,11 @@ install -m 755 "$here/drobo-pmu.sh" /usr/local/sbin/drobo-pmu
 install -m 755 "$here/drobo-fand.sh" /usr/local/sbin/drobo-fand
 install -m 755 "$here/drobo-bays.sh" /usr/local/sbin/drobo-bays
 install -m 755 "$here/drobo-leds.sh" /usr/local/sbin/drobo-leds
+install -m 755 "$here/drobo-boot-ok.sh" /usr/local/sbin/drobo-boot-ok
 install -m 755 "$here/postinst-hook" /etc/kernel/postinst.d/zz-drobo
 install -m 755 "$here/postinst-hook" /etc/initramfs/post-update.d/drobo
-install -m 644 "$here/drobo-fan.service" "$here/drobo-bays.service" "$here/drobo-leds.service" /etc/systemd/system/
-systemctl enable drobo-fan.service drobo-bays.service drobo-leds.service
+install -m 644 "$here/drobo-fan.service" "$here/drobo-bays.service" "$here/drobo-leds.service" "$here/drobo-boot-ok.service" /etc/systemd/system/
+systemctl enable drobo-fan.service drobo-bays.service drobo-leds.service drobo-boot-ok.service
 echo i2c-dev > /etc/modules-load.d/i2c-dev.conf                     # the capacity gauge is driven from user space
 echo drivetemp > /etc/modules-load.d/drivetemp.conf
 echo blacklist pata_marvell > /etc/modprobe.d/drobo-no-pata.conf     # the 88SE9122s' unused PATA side

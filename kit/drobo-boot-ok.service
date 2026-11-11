@@ -1,0 +1,9 @@
+[Unit]
+Description=Mark the Drobo 5N boot files as good once the system is up
+After=multi-user.target
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 60
+ExecStart=/usr/local/sbin/drobo-boot-ok
+[Install]
+WantedBy=multi-user.target

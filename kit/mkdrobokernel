@@ -35,7 +35,12 @@ le32() {  # print a 32-bit number as 4 little-endian bytes
 }
 
 new=$OUT/new
-rm -rf "$new"; mkdir -p "$new"
+rm -rf "$new"
+# The root is a 1 GB stick: refuse to build unless a new set (about 10 MB, initrd hard-linked) leaves headroom.
+MIN_FREE_KB=${MIN_FREE_KB:-51200}
+free=$(df -Pk "$OUT" | awk 'NR == 2 { print $4 }')
+[ "$free" -ge "$MIN_FREE_KB" ] || { echo "mkdrobokernel: only ${free} KB free on $OUT, need $MIN_FREE_KB; keeping the current boot files" >&2; exit 1; }
+mkdir -p "$new"
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 
 # 1. The uncompressed Image: the zImage carries one xz stream.
@@ -89,11 +94,19 @@ done
 cmp -s "$tmp/check" "$tmp/blob" || { echo "mkdrobokernel: pieces don't match" >&2; exit 1; }
 echo "$v" > "$new/VERSION"
 
-# 6. Swap in: current -> prev, new -> current. Files U-Boot reads live directly in /boot/drobo.
-rm -rf "$OUT/prev"; mkdir -p "$OUT/prev"
-for f in kernel.0 kernel.1 kernel.2 kernel.3 kernel.4 initrd drobo5n.dtb VERSION; do
-  [ -e "$OUT/$f" ] && mv "$OUT/$f" "$OUT/prev/$f"
-done
+# 6. Swap in: new -> current. Files U-Boot reads live directly in /boot/drobo.
+# The current set only becomes prev if it has booted (drobo-boot-ok writes $OUT/booted-ok after a good boot).
+# Otherwise (e.g. the hook runs twice in one upgrade) it is simply replaced, so prev is always a set that booted.
+SET="kernel.0 kernel.1 kernel.2 kernel.3 kernel.4 initrd drobo5n.dtb VERSION"
+if [ -f "$OUT/booted-ok" ] && (cd "$OUT" && md5sum --status -c booted-ok 2>/dev/null); then
+  rm -rf "$OUT/prev"; mkdir -p "$OUT/prev"
+  for f in $SET; do [ -e "$OUT/$f" ] && mv "$OUT/$f" "$OUT/prev/$f"; done
+  rm -f "$OUT/booted-ok"
+  echo "mkdrobokernel: previous set (booted) kept in $OUT/prev"
+else
+  for f in $SET; do rm -f "$OUT/$f"; done
+  echo "mkdrobokernel: current set never booted; replaced it and left $OUT/prev alone"
+fi
 mv "$new"/* "$OUT/"; rmdir "$new"
 sync
 echo "mkdrobokernel: $v ready ($ilen byte Image in $(ls "$OUT"/kernel.? | wc -l) pieces, initrd $isz bytes)"
