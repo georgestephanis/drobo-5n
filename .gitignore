@@ -1,0 +1,6 @@
+out/
+vmlinuz
+initrd.gz
+SHA256SUMS
+*.img
+.DS_Store

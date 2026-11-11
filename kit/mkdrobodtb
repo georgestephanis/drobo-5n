@@ -1,0 +1,13 @@
+#!/bin/sh
+# mkdrobodtb : build /usr/local/lib/drobo/drobo5n.dtb (the template mkdrobokernel uses) from
+# drobo5n-base.dtb (reference tree + the board's MAC) and drobo5n-fixups.dtsi, then run mkdrobokernel.
+set -eu
+LIB=/usr/local/lib/drobo
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+dtc -q -I dtb -O dts -o "$tmp/base.dts" "$LIB/drobo5n-base.dtb"
+cat "$tmp/base.dts" "$LIB/drobo5n-fixups.dtsi" > "$tmp/drobo5n.dts"
+dtc -q -I dts -O dtb -o "$tmp/drobo5n.dtb" "$tmp/drobo5n.dts"
+fdtget "$tmp/drobo5n.dtb" /soc/internal-regs/i2c@11100/gpio@23 compatible > /dev/null
+install -m 644 "$tmp/drobo5n.dtb" "$LIB/drobo5n.dtb"
+echo "mkdrobodtb: $LIB/drobo5n.dtb rebuilt"
+[ "${1:-}" = "--no-kernel" ] || /usr/local/sbin/mkdrobokernel

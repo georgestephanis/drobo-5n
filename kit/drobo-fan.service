@@ -1,0 +1,12 @@
+[Unit]
+Description=Drobo 5N case fan from temperatures (through the PMU)
+After=dev-ttyS2.device
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/drobo-fand
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,4 @@
+#!/bin/sh
+# /etc/kernel/postinst.d/zz-drobo and /etc/initramfs/post-update.d/drobo:
+# rebuild the Drobo 5N boot files whenever Debian installs a kernel or rebuilds an initrd. $1 = kernel version.
+exec /usr/local/sbin/mkdrobokernel "$1"

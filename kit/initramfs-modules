@@ -1,0 +1,8 @@
+# Drobo 5N: drivers the initrd must carry with MODULES=dep, so root can live on the eUSB stick,
+# the mSATA SSD (SoC SATA, sata_mv) or a bay disk (88SE9122, ahci).
+ehci_orion
+usb_storage
+sd_mod
+sata_mv
+ahci
+ext4

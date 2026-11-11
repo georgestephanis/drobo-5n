@@ -1,0 +1,13 @@
+[Unit]
+Description=Drobo 5N: power the drive bays that hold a disk
+After=systemd-modules-load.service
+Before=local-fs-pre.target
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/drobo-bays on
+RemainAfterExit=yes
+
+[Install]
+WantedBy=sysinit.target

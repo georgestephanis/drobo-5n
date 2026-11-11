@@ -1,0 +1,55 @@
+/*
+ * Drobo 5N fixups, appended to the base DTB's source by mkdrobodtb.
+ * The base is the Armada XP DB tree plus the board's real MAC (local-mac-address),
+ * which is private, so it isn't kept here.
+ */
+
+/* Only eth0 (0xd0070000, PHY 0, a Marvell 88E1318S) is wired. Drop the reference board's other three. */
+&{/soc/internal-regs/ethernet@74000} { status = "disabled"; /delete-property/ phy; };
+&{/soc/internal-regs/ethernet@30000} { status = "disabled"; /delete-property/ phy; };
+&{/soc/internal-regs/ethernet@34000} { status = "disabled"; /delete-property/ phy; };
+/delete-node/ &{/soc/internal-regs/mdio@72004/ethernet-phy@1};
+/delete-node/ &{/soc/internal-regs/mdio@72004/ethernet-phy@2};
+/delete-node/ &{/soc/internal-regs/mdio@72004/ethernet-phy@3};
+
+/* mSATA power is SoC GPIO 66 (bank 2, line 2), active high. Keep it on: the slot isn't hot-swap. */
+&{/soc/internal-regs/gpio@18180} {
+	msata-power-hog {
+		gpio-hog;
+		gpios = <2 0>;
+		output-high;
+		line-name = "msata-power";
+	};
+};
+
+/*
+ * The backplane's two PCA9555 expanders on TWSI1. Bays are 0 (top) to 4 (bottom).
+ * 0x20: two LEDs per bay.  0x23: port 0 = bay power (active high), port 1 = detect (low = disk present).
+ */
+&{/soc/internal-regs/i2c@11100} {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	bay_leds: gpio@20 {
+		compatible = "nxp,pca9555";
+		reg = <0x20>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		gpio-line-names =
+			"bay3-led-a", "bay3-led-b", "bay2-led-a", "bay2-led-b",
+			"bay1-led-a", "bay1-led-b", "bay0-led-a", "bay0-led-b",
+			"bay4-led-a", "bay4-led-b", "", "", "", "", "", "";
+	};
+
+	bay_power: gpio@23 {
+		compatible = "nxp,pca9555";
+		reg = <0x23>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		gpio-line-names =
+			"bay3-power", "bay2-power", "bay1-power", "bay0-power",
+			"bay4-power", "", "", "",
+			"bay3-detect", "bay2-detect", "bay1-detect", "bay0-detect",
+			"bay4-detect", "", "", "";
+	};
+};
