@@ -36,8 +36,8 @@ Mainboard `100-00041-001 Rev 3.0` (assembly `200-00038-005`). Firmware strings s
 
 | Ref | What | Status |
 |---|---|---|
-| `JP3` (front, 4-pin) | U-Boot and vxWorks console (UART0). Its `J3` jumper must be seated or input is lost. See [consoles-and-u-boot.md](consoles-and-u-boot.md). | populated, confirmed |
-| `JP2` (rear, 4-pin) | Stock Linux console (UART1) | footprint; solder a header on |
+| `JP2` (front, 4-pin) | U-Boot and vxWorks console (UART0). Its `J3` jumper must be seated or input is lost. See [consoles-and-u-boot.md](consoles-and-u-boot.md). | populated, confirmed |
+| `JP3` (rear, 4-pin) | Stock Linux console (UART1) | footprint; solder a header on |
 | Front-panel cable | 3 wires: red, white and blue. Red drives the button's LED (up to about 1.8 V, a ramping blink). White and blue idle near 3.17 V on standby, and the button joins them. **Neither is ground.** An optocoupler across white (collector) and blue (emitter) gives a clean remote "press". | confirmed |
 | `J7` (backplane) | Fan header: 3 pins, of which the stock fan uses 2 (power and ground). No tach or PWM: the PMU varies the supply voltage. | confirmed |
 | `J19` (underside, 2×4 female, about 2.0 mm pitch) | Reachable by removing the mSATA cover, without opening the case. Unidentified. Candidates: a second internal USB header (the eUSB stick's header is also 2.0 mm female), PMU programming, a UART or test header. | populated, unidentified |

@@ -48,4 +48,4 @@ Without the fixups, raw I²C works too (with `i2c-tools`). For bay 2, `i2cget -y
 
 Disks from a Drobo disk pack (BeyondRAID) can't be read as ordinary filesystems; `blkid` finds nothing on them.
 
-The LEDs aren't driven yet. Each bay has two LED lines (`a` and `b`, probably two colours), and their polarity hasn't been tested.
+Each bay has two LED lines: `a` is green, `b` is red, both together yellow, and high lights them. See [front-panel-leds.md](front-panel-leds.md).

@@ -1,0 +1,13 @@
+[Unit]
+Description=Drobo 5N front panel LEDs (bays, power, activity, capacity gauge)
+After=drobo-bays.service systemd-modules-load.service
+Wants=drobo-bays.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/drobo-leds
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

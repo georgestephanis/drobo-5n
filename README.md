@@ -53,7 +53,7 @@ For what we learned about the hardware, U-Boot, the power controller and the sto
 
 ## 2. Get a console on U-Boot
 
-1. Open the case. The console U-Boot uses is the front 4-pin header **JP3** (UART0). Make sure its **J3 jumper** is seated; a loose one silently drops everything you type.
+1. Open the case. The console U-Boot uses is the front 4-pin header **JP2** (UART0). Make sure its **J3 jumper** is seated; a loose one silently drops everything you type.
 2. Wire it: header pin 2 is the board's RX (to your adapter's TX), pin 3 is the board's TX (to your adapter's RX), pin 4 is ground. Add a separate ground wire to the board if your input seems to be ignored. A bad ground crimp gives a console that prints fine but ignores input.
 3. Open the port at 115200 8N1 and power the Drobo on.
 4. The stock `bootdelay` is 0, so **tap the space bar continuously from the moment you press power** until you see the `Marvell>>` prompt. Then type slowly or paste in short pieces. This U-Boot drops characters if you send them too fast.
@@ -146,7 +146,7 @@ That tarball holds the same files as `kit/` here. If you'd rather not download i
 
 If `apt-get` fails inside the chroot, mount the system directories first: `for d in dev proc sys; do mount --bind /$d /target/$d; done`, and copy `/etc/resolv.conf` into `/target/etc/`.
 
-It takes a few minutes. It installs `u-boot-tools`, `device-tree-compiler`, `xz-utils`, `gpiod`, `i2c-tools` and `avahi-daemon`, and copies the tools in. It builds the device tree with your MAC, shrinks the initrd to about 10 MB (`MODULES=dep` plus the USB, SATA and ext4 drivers), and writes the boot files to `/boot/drobo`. It ends by listing them:
+It takes a few minutes. It installs `u-boot-tools`, `device-tree-compiler`, `xz-utils`, `gpiod`, `busybox` (its `i2cget`/`i2cset` avoid `i2c-tools`, which pulls in Perl), `openssh-server` and `avahi-daemon`, and copies the tools in. It builds the device tree with your MAC, shrinks the initrd to about 10 MB (`MODULES=dep` plus the USB, SATA and ext4 drivers), and writes the boot files to `/boot/drobo`. It ends by listing them:
 
 ```
 drobo5n.dtb  initrd  kernel.0  kernel.1  kernel.2  kernel.3  kernel.4  VERSION  prev/

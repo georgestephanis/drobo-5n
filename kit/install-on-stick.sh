@@ -19,7 +19,8 @@ keep() { [ -e "$1" ] && [ ! -e "$1.orig" ] && cp -a "$1" "$1.orig"; return 0; }
 echo "== packages"
 apt-get update -q
 DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
-  u-boot-tools device-tree-compiler xz-utils gpiod i2c-tools avahi-daemon
+  u-boot-tools device-tree-compiler xz-utils gpiod busybox avahi-daemon openssh-server
+apt-mark manual openssh-server   # so removing the installer's task packages can't take it away
 apt-get clean
 echo 'APT::Keep-Downloaded-Packages "false";' > /etc/apt/apt.conf.d/99drobo-no-cache
 
@@ -31,10 +32,12 @@ install -m 755 "$here/mkdrobodtb" /usr/local/sbin/mkdrobodtb
 install -m 755 "$here/drobo-pmu.sh" /usr/local/sbin/drobo-pmu
 install -m 755 "$here/drobo-fand.sh" /usr/local/sbin/drobo-fand
 install -m 755 "$here/drobo-bays.sh" /usr/local/sbin/drobo-bays
+install -m 755 "$here/drobo-leds.sh" /usr/local/sbin/drobo-leds
 install -m 755 "$here/postinst-hook" /etc/kernel/postinst.d/zz-drobo
 install -m 755 "$here/postinst-hook" /etc/initramfs/post-update.d/drobo
-install -m 644 "$here/drobo-fan.service" "$here/drobo-bays.service" /etc/systemd/system/
-systemctl enable drobo-fan.service drobo-bays.service
+install -m 644 "$here/drobo-fan.service" "$here/drobo-bays.service" "$here/drobo-leds.service" /etc/systemd/system/
+systemctl enable drobo-fan.service drobo-bays.service drobo-leds.service
+echo i2c-dev > /etc/modules-load.d/i2c-dev.conf                     # the capacity gauge is driven from user space
 echo drivetemp > /etc/modules-load.d/drivetemp.conf
 echo blacklist pata_marvell > /etc/modprobe.d/drobo-no-pata.conf     # the 88SE9122s' unused PATA side
 echo blacklist marvell_cesa > /etc/modprobe.d/drobo-no-cesa.conf     # its hash self-tests fail on this kernel

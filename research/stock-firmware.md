@@ -51,4 +51,4 @@ To back the NOR up from the stock Linux shell, stream each `/dev/mtdN` over the 
 - Only TCP **5000** and **5001** are open: Drobo Dashboard's `nasd`. Port 5000 sends an `ESATMUpdate` XML status blob unprompted, with the firmware version, serial number, disk and DroboApps state.
 - There's no SSH; DroboApps, Dropbear included, live on the disk pack.
 - The stock Linux also starts avahi, syslog, ntpd and a "recovery server" (`nc` on UDP 4999).
-- The stock Linux console on `JP2` ends at a root shell with no password. It's useful for backing up the NOR before you replace anything.
+- The stock Linux console on `JP3` ends at a root shell with no password. It's useful for backing up the NOR before you replace anything.
