@@ -54,6 +54,8 @@ For what we learned about the hardware, U-Boot, the power controller and the sto
 ## 2. Get a console on U-Boot
 
 1. Open the case. The console U-Boot uses is **J2** (UART0): four bare holes, under the RF shield, with no header fitted at the factory. Solder three wires to it (pin 2 = board RX, pin 3 = board TX, pin 4 = ground; 3.3 V logic) and route them out through the case, so you don't need to open it again. You'll need to cut a small hole in the RF shield to reach it. The factory-fitted 4-pin header **J3** is a different UART: the stock Linux console, not this one.
+
+   ![J2, the console header: four holes at the board's edge beside the factory J3 header. Pin 1 is the square pad; pin 2 board RX, pin 3 board TX, pin 4 ground.](images/j2-console.svg)
 2. Wire it: header pin 2 is the board's RX (to your adapter's TX), pin 3 is the board's TX (to your adapter's RX), pin 4 is ground. Add a separate ground wire to the board if your input seems to be ignored. A bad ground crimp gives a console that prints fine but ignores input.
 3. Open the port at 115200 8N1 and power the Drobo on.
 4. The stock `bootdelay` is 0, so **tap the space bar continuously from the moment you press power** until you see the `Marvell>>` prompt. Then type slowly or paste in short pieces. This U-Boot drops characters if you send them too fast.
