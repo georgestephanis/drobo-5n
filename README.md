@@ -3,7 +3,7 @@
 > [!NOTE]
 > **AI disclosure.** This project was done by George Stephanis working with Claude (Anthropic's **Claude Opus 5.5**, in Claude Code). Claude wrote most of the scripts, the boot stub and this guide, and ran commands on the Drobo over its serial console and SSH. George did the hardware side: opening the case, wiring the serial consoles and a Raspberry Pi Pico bridge, power-cycling and recovering the board, swapping fans, and checking results by eye and ear. He set the goals and constraints and reviewed what was published.
 >
-> The working sessions add up to roughly **13–14 hours over three days (9–11 November 2026)**, with George at the bench for nearly all of it (about 240 messages back and forth), plus hardware time of his outside the sessions. From the session logs, Claude produced about **1.15 million output tokens** over about 1,450 model calls, and took in about **3 million new input tokens**. Long sessions also re-read their earlier context from the prompt cache, about 317 million tokens of cache reads in all. Every step in this guide has run on real hardware: one Drobo 5N, across a few dozen boots, many of them failures along the way. The full log of what was tried, including the dead ends, is in the [project write-up](https://celestial-star.space.fast/).
+> The working sessions add up to roughly **13–14 hours over three days (9–11 November 2026)**, with George at the bench for nearly all of it (about 240 messages back and forth), plus hardware time of his outside the sessions. From the session logs, Claude produced about **1.15 million output tokens** over about 1,450 model calls, and took in about **3 million new input tokens**.[^cache] Every step in this guide has run on real hardware: one Drobo 5N, across a few dozen boots, many of them failures along the way. The full log of what was tried, including the dead ends, is in the [project write-up](https://celestial-star.space.fast/).
 
 How to replace Drobo OS on a Drobo 5N with plain Debian 13 that boots by itself, from the Drobo's own U-Boot, with no flashing of the bootloader. This is the short path. The long version, with every dead end, is in the [project write-up](https://celestial-star.space.fast/).
 
@@ -12,6 +12,8 @@ How to replace Drobo OS on a Drobo 5N with plain Debian 13 that boots by itself,
 
 > [!WARNING]
 > **Before you start.** This erases Drobo OS from the eUSB stick; step 5 makes a full backup first so you can go back. It doesn't touch the SPI flash (U-Boot) or the NOR flash. The only lasting changes outside the stick are a few U-Boot environment variables, all listed in step 7. You'll be opening the case and connecting a serial adapter. Keep a fan on the heatsink if the case is open. You do this at your own risk.
+
+For what we learned about the hardware, U-Boot, the power controller and the stock firmware, see [`research/`](research/).
 
 ## Steps
 
@@ -247,3 +249,5 @@ November 2026 · written by George Stephanis with Claude. Tested on one Drobo 5N
 ## License
 
 GPL-2.0, the same as the Linux kernel and U-Boot. See [LICENSE](LICENSE). `kit/drobo5n-base.dts` is derived from the mainline kernel's Armada XP device trees, which are GPL-2.0 or MIT.
+
+[^cache]: Not counted above: each model call also re-reads the conversation so far from the prompt cache, which adds up to about 317 million cached input tokens. Those are cheap re-reads of the same context, not new work.

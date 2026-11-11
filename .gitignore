@@ -4,3 +4,4 @@ initrd.gz
 SHA256SUMS
 *.img
 .DS_Store
+conversation-log.jsonl
