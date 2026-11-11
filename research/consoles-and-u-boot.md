@@ -6,12 +6,12 @@ Both are 3.3 V, 115200 8N1.
 
 | Header | UART | What it carries |
 |---|---|---|
-| `JP2` (front, populated, with a `J3` jumper) | UART0, `0xD0012000` | BootROM, U-Boot, the vxWorks console (`[vxWorks *]#`), and mainline Linux (`ttyS0`, with the registers left at `0xD0000000`) |
-| `JP3` (rear, unpopulated) | UART1, `0xD0012100` | The stock Linux 3.2 console: a `shockwave:/ #` root shell, no login |
+| `J2` (four bare holes under the RF shield; no header fitted) | UART0, `0xD0012000` | BootROM, U-Boot, the vxWorks console (`[vxWorks *]#`), and mainline Linux (`ttyS0`, with the registers left at `0xD0000000`) |
+| `J3` (4-pin header fitted at the factory) | UART1, `0xD0012100` | The stock Linux 3.2 console: a `shockwave:/ #` root shell, no login |
 
-The board's silkscreen labels the populated console header `JP2` and the UART1 footprint `JP3`. Notes before 11 November 2026 had those two labels swapped.
+Notes before 11 November 2026 had `J2` and `J3` the other way round, and called them `JP2`/`JP3` in places. The factory-fitted header is the less useful one: the console that matters is `J2`, which needs wires soldered on. Solder wires straight to its holes and route them out through the case, rather than fitting pins that must stay reachable.
 
-`JP2` pinout in the working setup: pin 2 = board RX, pin 3 = board TX, pin 4 = ground. Notes taken before a wiring fault was found had these the other way round, so check with a scope or a listen-only adapter first. A bad ground crimp gave a console that printed perfectly but ignored everything typed, which looked like the board freezing. If input is ignored, check the jumper and the ground first.
+`J2` pinout in the working setup: pin 2 = board RX, pin 3 = board TX, pin 4 = ground. Notes taken before a wiring fault was found had these the other way round, so check with a scope or a listen-only adapter first. A bad ground crimp gave a console that printed perfectly but ignored everything typed, which looked like the board freezing. If input is ignored, check the jumper and the ground first.
 
 UART2 (`0xD0012200`) goes to the PMU at 38400 baud ([pmu-protocol.md](pmu-protocol.md)).
 

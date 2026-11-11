@@ -1,3 +1,6 @@
+// NOTE (2026-11-11): the J2/J3 names in these comments are swapped. The board's UART0 console
+// (U-Boot, vxWorks, mainline Linux) is J2, four bare holes under the RF shield; the factory
+// 4-pin header J3 is UART1, the stock Linux console. See ../consoles-and-u-boot.md.
 // Dual USB <-> UART bridge for the Drobo 5N consoles (Raspberry Pi Pico, 3.3V).
 //
 // Wiring, SWAP_PINS=1 (verified with tools/pico_listen after the 1x3 housings

@@ -53,7 +53,7 @@ For what we learned about the hardware, U-Boot, the power controller and the sto
 
 ## 2. Get a console on U-Boot
 
-1. Open the case. The console U-Boot uses is the front 4-pin header **JP2** (UART0). Make sure its **J3 jumper** is seated; a loose one silently drops everything you type.
+1. Open the case. The console U-Boot uses is **J2** (UART0): four bare holes, under the RF shield, with no header fitted at the factory. Solder three wires to it (pin 2 = board RX, pin 3 = board TX, pin 4 = ground; 3.3 V logic) and route them out through the case, so you don't need to open it again. You'll need to cut a small hole in the RF shield to reach it. The factory-fitted 4-pin header **J3** is a different UART: the stock Linux console, not this one.
 2. Wire it: header pin 2 is the board's RX (to your adapter's TX), pin 3 is the board's TX (to your adapter's RX), pin 4 is ground. Add a separate ground wire to the board if your input seems to be ignored. A bad ground crimp gives a console that prints fine but ignores input.
 3. Open the port at 115200 8N1 and power the Drobo on.
 4. The stock `bootdelay` is 0, so **tap the space bar continuously from the moment you press power** until you see the `Marvell>>` prompt. Then type slowly or paste in short pieces. This U-Boot drops characters if you send them too fast.
@@ -220,7 +220,7 @@ cat /sys/class/hwmon/hwmon*/temp1_input  # SoC (and disk) temperatures, millideg
 | Symptom | Cause and fix |
 |---|---|
 | U-Boot runs `amp_boot` / "Checking for vxWorks" and hangs | `amp_enable` is still `yes`. Unplug the power for 10 s, catch U-Boot, and redo step 7. |
-| Typing at `Marvell>>` does nothing | The J3 jumper, the ground wire, or TX/RX swapped. Output working only means RX is fine. |
+| Typing at `Marvell>>` does nothing | The ground wire, a loose connection on J2, or TX/RX swapped. Output working only means RX is fine. |
 | Nothing after `go 8000000` | Make sure you ran `usb stop` first, and that the initrd ends below `0x8000000` (`make-boot-files.py` checks this). |
 | `inflate() returned -5` | A kernel piece is too big for this U-Boot's 8 MB unpack limit. `mkdrobokernel` splits at 7 MiB, so rerun it. |
 | Boots, but can't find root | Make sure root is `/dev/sda1`, ext2. Or, from a TFTP boot of the installer, chroot and set `MODULES=most` in `/etc/initramfs-tools/initramfs.conf`, then `update-initramfs -u`. |
