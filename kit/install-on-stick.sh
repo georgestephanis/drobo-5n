@@ -36,6 +36,7 @@ install -m 755 "$here/drobo-fand.sh" /usr/local/sbin/drobo-fand
 install -m 755 "$here/drobo-bays.sh" /usr/local/sbin/drobo-bays
 install -m 755 "$here/drobo-leds.sh" /usr/local/sbin/drobo-leds
 install -m 755 "$here/drobo-boot-ok.sh" /usr/local/sbin/drobo-boot-ok
+install -m 755 "$here/drobo-boot-sync" /usr/local/sbin/drobo-boot-sync
 install -m 755 "$here/drobo-powerbtn.sh" /usr/local/sbin/drobo-powerbtn
 mkdir -p /usr/lib/systemd/system-shutdown /etc/systemd/system.conf.d
 install -m 755 "$here/drobo-pmu-poweroff.sh" /usr/lib/systemd/system-shutdown/drobo-pmu-poweroff   # poweroff really cuts power

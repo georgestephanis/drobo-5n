@@ -127,3 +127,4 @@ printf 'setenv dbtrialid %s\n' "$setid" > "$tmp/trial.txt"
 mkimage -A arm -O linux -T script -C none -n drobo-trial -d "$tmp/trial.txt" "$OUT/trial" > /dev/null
 sync
 echo "mkdrobokernel: $v ready ($ilen byte Image in $(ls "$OUT"/kernel.? | wc -l) pieces, initrd $isz bytes)"
+[ -x /usr/local/sbin/drobo-boot-sync ] && { /usr/local/sbin/drobo-boot-sync || echo "mkdrobokernel: WARNING: copy to the SSD boot partition failed" >&2; }

@@ -8,7 +8,7 @@
 How to replace Drobo OS on a Drobo 5N with plain Debian 13 that boots by itself, from the Drobo's own U-Boot, with no flashing of the bootloader. This is the short path. The long version, with every dead end, is in the [project write-up](https://celestial-star.space.fast/).
 
 > [!TIP]
-> **What you end up with.** Debian 13 (trixie, armhf, kernel `armmp-lpae`) on the Drobo's internal 1 GB eUSB stick. It boots by itself in about 2½ minutes, gets its address by DHCP, and answers SSH at `drobo5n.local`. All five bays work as ordinary SATA disks. The case fan follows the SoC and disk temperatures, and kernel updates rebuild the boot files on their own.
+> **What you end up with.** Debian 13 (trixie, armhf, kernel `armmp-lpae`) on the Drobo's internal 1 GB eUSB stick. It boots by itself in about 2½ minutes (about 1 minute 20 with an mSATA SSD fitted), gets its address by DHCP, and answers SSH at `drobo5n.local`. All five bays work as ordinary SATA disks. The case fan follows the SoC and disk temperatures, and kernel updates rebuild the boot files on their own.
 
 > [!WARNING]
 > **Before you start.** This erases Drobo OS from the eUSB stick; step 5 makes a full backup first so you can go back. It doesn't touch the SPI flash (U-Boot) or the NOR flash. The only lasting changes outside the stick are a few U-Boot environment variables, all listed in step 7. You'll be opening the case and connecting a serial adapter. Keep a fan on the heatsink if the case is open. You do this at your own risk.
@@ -47,6 +47,8 @@ For what we learned about the hardware, U-Boot, the power controller and the sto
 | [`install-on-stick.sh`](kit/install-on-stick.sh) | the Drobo | Installs everything below and builds `/boot/drobo` |
 | [`mkdrobokernel`](kit/mkdrobokernel), [`postinst-hook`](kit/postinst-hook), [`drobo-boot-ok`](kit/drobo-boot-ok.sh) | the Drobo | Rebuild the boot files whenever Debian installs a kernel or initrd, keeping the last set that booted in `prev`; restore `prev` if U-Boot had to fall back |
 | [`uboot-fallback.txt`](kit/uboot-fallback.txt) | U-Boot | The boot command: power LED on, current set, `prev` on failure, one trial boot of a new set |
+| [`uboot-ssd.txt`](kit/uboot-ssd.txt) | U-Boot | Optional, after `uboot-fallback.txt`: read the boot files from the mSATA SSD's ext2 partition when it's there (about 80 s faster) |
+| [`drobo-boot-sync`](kit/drobo-boot-sync) | the Drobo | Copies `/boot/drobo` to the SSD's `drobo-boot` partition after every change |
 | [`drobo-powerbtn`](kit/drobo-powerbtn.sh), [`drobo-pmu-poweroff`](kit/drobo-pmu-poweroff.sh), [`drobo-watchdog.conf`](kit/drobo-watchdog.conf) | the Drobo | Power button → clean shutdown, `poweroff` cuts power, watchdog resets a hung system |
 | [`mkdrobodtb`](kit/mkdrobodtb), [`drobo5n-fixups.dtsi`](kit/drobo5n-fixups.dtsi) | the Drobo | Device tree fixups: drive-bay expanders, mSATA power, unused Ethernet ports off |
 | [`drobo-pmu.sh`](kit/drobo-pmu.sh), [`drobo-fand.sh`](kit/drobo-fand.sh), [`drobo-fan.service`](kit/drobo-fan.service) | the Drobo | Talk to the power-management chip; temperature-controlled fan |
@@ -209,7 +211,7 @@ reset
 
 The second half of that list (also in [`kit/uboot-fallback.txt`](kit/uboot-fallback.txt)) is the fallback. `dbsel` lights the power LED yellow, then boots the current set in `/boot/drobo`. If any file fails to load, it boots `/boot/drobo/prev` instead. When `mkdrobokernel` installs a new set, it leaves a flag file, `/boot/drobo/trial`, a tiny U-Boot script that sets `dbtrialid`. U-Boot saves `dbtry=<that id>` and tries the new set once. If the flag is still there on the next boot, that try didn't come up (with `panic=10` a failed boot resets the board), so U-Boot boots `prev`. Paste the lines exactly: this U-Boot's `test` drops empty quoted strings, which is why the comparisons use `"x$dbtry"`.
 
-From now on the Drobo boots Debian by itself. U-Boot reads about 20 MB from the stick (around 80 seconds; it's slow), unpacks the kernel pieces, and jumps. Debian is on SSH about 2½ minutes after power-on.
+From now on the Drobo boots Debian by itself. U-Boot reads about 20 MB from the stick (around 80 seconds; it's slow), unpacks the kernel pieces, and jumps. Debian is on SSH about 2½ minutes after power-on. With an mSATA SSD set up as in section 8, U-Boot reads the same files over SATA in about a second, and SSH is up in about 80 seconds.
 
 ## 8. First boot and everyday use
 
@@ -223,33 +225,38 @@ cat /sys/class/hwmon/hwmon*/temp1_input  # SoC (and disk) temperatures, millideg
 
 - **Drive bays.** Bays are numbered 0 (top) to 4 (bottom). At boot, `drobo-bays` powers every bay that holds a disk, 4 s apart. The disks then appear as ordinary SATA disks (`/dev/sdb`…). Use them with whatever you like: ext4, mdadm, mergerfs and SnapRAID, or OpenMediaVault. Drobo's BeyondRAID disk packs are not readable. `sudo drobo-bays on` rescans after you insert a disk; `off` powers all bays down.
 - **Fan.** `drobo-fand` sets the speed (01–31) from the hottest sensor, resent every 30 s. The power controller winds the speed down by itself if nobody keeps setting it. It never goes below 16, because the stock fan's bearing can stall at low speed. Tune it in `/etc/default/drobo-fan`, for example `FLOOR=12 SOC_HI=70`. If the fan doesn't start after a cold boot, give it a nudge, or replace it.
-- **Kernel updates.** After `apt upgrade` installs a kernel or rebuilds an initrd, the hook rebuilds `/boot/drobo`. Each set's DTB carries an id (`/chosen/drobo,set-id`), the root by UUID, `panic=10` and `fsck.repair=yes`. A minute after boot, `drobo-boot-ok` checks which set booted. If it was the current one, it records its checksums and clears the trial flag; `mkdrobokernel` only moves a set into `prev` after that, so `prev` is always a set that booted (Debian runs the hook twice per install). If U-Boot fell back to `prev`, it moves the broken set to `/boot/drobo/failed`, copies `prev` back as current, and logs a warning (`journalctl -u drobo-boot-ok`). `mkdrobokernel` refuses to build with less than 50 MB free. All of this was tested on 11 Nov, including a set with a wrong root UUID: it panicked, reset, and came back on `prev` with nobody at the console.
+- **Kernel updates.** After `apt upgrade` installs a kernel or rebuilds an initrd, the hook rebuilds `/boot/drobo`. Each set's DTB carries an id (`/chosen/drobo,set-id`), the root by UUID, `panic=10` and `fsck.repair=yes`. A minute after boot, `drobo-boot-ok` checks which set booted. If it was the current one, it records its checksums and clears the trial flag; `mkdrobokernel` only moves a set into `prev` after that, so `prev` is always a set that booted (Debian runs the hook twice per install). If U-Boot fell back to `prev` after a failed trial, it moves the broken set to `/boot/drobo/failed`, copies `prev` back as current, and logs a warning (`journalctl -u drobo-boot-ok`). `mkdrobokernel` refuses to build with less than 50 MB free. All of this was tested on 11 Nov, including a set with a wrong root UUID: it panicked, reset, and came back on `prev` with nobody at the console.
 - **Watchdog.** systemd keeps the SoC watchdog running (`RuntimeWatchdogSec=60s`, from `drobo-watchdog.conf`). If the system hangs for a minute, the board resets. A watchdog reset was tested and comes back through U-Boot as normal.
 - **Power button.** A short press on the back does a clean shutdown: the power LED turns red, Linux shuts down, and the power goes off. `drobo-powerbtn` sends the power controller "CPU is up" (`K`) at boot and runs `poweroff` when it raises the power-down request (SoC GPIO 40). `sudo poweroff` also really powers off: the last shutdown step sends the controller `S`. Press the button again to power on.
-- **Root on the mSATA SSD (recommended).** The 1 GB stick is tight and wears out. U-Boot can only read USB, so the boot files stay on the stick and Linux mounts it at `/boot`; everything else moves to the SSD. The old root stays on the stick, and the `prev` boot set still points at it, so a failed switch falls back to it. With an SSD in the slot (power off first; it shows up as `sda`, and the stick moves to `sdb`):
+- **Root and boot files on the mSATA SSD (recommended).** The 1 GB stick is tight, wears out, and is slow: U-Boot needs about 80 s to read 20 MB from it. U-Boot can read the SSD over SATA in about a second, but its ext2 driver can't read ext4 (it **hangs** on an ext4 partition), so the SSD gets two partitions: ext4 for root, and a small ext2 `drobo-boot` partition at the end that holds a copy of `/boot/drobo`. The stick keeps the master copy at `/boot` and stays the fallback: U-Boot uses the stick whenever the SSD's copy is missing, and the old root stays on the stick for the `prev` set. With an SSD in the slot (power off first; it shows up as `sda`, and the stick moves to `sdb`):
 
   ```sh
-  printf 'label: gpt\n,,L,\n' | sudo sfdisk /dev/sda        # check it's the SSD first: lsblk
+  lsblk                                                               # make sure sda is the SSD
+  SZ=$(( $(sudo blockdev --getsz /dev/sda) - 2048 - 2097152 - 4096 ))     # all but ~1 GiB, in sectors
+  printf 'label: gpt\n,%s,L,\n,,L,\n' $SZ | sudo sfdisk /dev/sda   # root, then a 1 GiB boot partition at the end
   sudo mkfs.ext4 -L drobo-root /dev/sda1
+  sudo mkfs.ext2 -b 4096 -I 256 -L drobo-boot /dev/sda2               # plain ext2, the only thing U-Boot reads
   sudo mkdir -p /mnt/newroot && sudo mount /dev/sda1 /mnt/newroot
   sudo sh -c 'tar -C / --one-file-system --xattrs --acls -cpf - . | tar -C /mnt/newroot --xattrs --acls -xpf -'
-  sudo mv /mnt/newroot/boot /mnt/newroot/boot.copy-from-stick && sudo mkdir /mnt/newroot/boot /mnt/newroot/media/eusb
+  sudo mv /mnt/newroot/boot /mnt/newroot/boot.copy-from-stick && sudo mkdir /mnt/newroot/boot /mnt/newroot/media/eusb /mnt/newroot/media/sdboot
   NEW=$(sudo blkid -s UUID -o value /dev/sda1); STICK=$(findmnt -no UUID /)
   printf '%s\n' "UUID=$NEW / ext4 noatime,errors=remount-ro 0 1" "UUID=$STICK /media/eusb ext2 noatime 0 2" \
-    "/media/eusb/boot /boot none bind 0 0" | sudo tee /mnt/newroot/etc/fstab
+    "/media/eusb/boot /boot none bind 0 0" "LABEL=drobo-boot /media/sdboot ext2 noatime,nofail 0 2" | sudo tee /mnt/newroot/etc/fstab
   sudo umount /mnt/newroot
-  sudo ROOT_UUID=$NEW ROOT_FSTYPE=ext4 mkdrobokernel                   # a trial set with root on the SSD
+  sudo ROOT_UUID=$NEW ROOT_FSTYPE=ext4 mkdrobokernel                   # a trial set with root on the SSD; also copies it to sda2
   sudo reboot
   ```
 
-  After the reboot, `findmnt /` should show `/dev/sda1` and `findmnt /boot` should show `/dev/sdb1[/boot]`. Tested on 11 Nov with a 64 GB mSATA SSD. If you stay on the stick instead: no swap, `noatime` (the installer's default), and consider `Storage=volatile` in `/etc/systemd/journald.conf`.
+  `drobo-boot-sync` (run by `mkdrobokernel` and `drobo-boot-ok`) keeps the SSD's copy in step with the stick. It builds the new copy beside the old one and swaps it in with two renames, so U-Boot only ever sees a complete set or none. To have U-Boot use it, add the lines in [`kit/uboot-ssd.txt`](kit/uboot-ssd.txt) at the U-Boot prompt and `saveenv`. They switch on the mSATA power (SoC GPIO 66: U-Boot's `gpio s 66` doesn't make it an output, so it writes GPIO bank 2's output and output-enable registers directly, `0xd0018180` = 5 and `0xd0018184` = 2; check with `md.l d0018180 2` that your board reads `1` and `6` there first), run `ide reset`, and point every load at `ide 1:2` if `/boot/drobo/VERSION` is there, otherwise at the stick. If no set on the SSD loads, it tries the stick. Never point `ext2load` or `ext2ls` at the ext4 partition (`ide 1:1`): this U-Boot hangs until the power is cut.
+
+  After the reboot, `findmnt /` should show `/dev/sda1`, `findmnt /boot` should show `/dev/sdb1[/boot]`, and the console should print `DROBO: boot files from the SSD`. Tested on 11 Nov with a 64 GB mSATA SSD: reboot to SSH went from 154 s to 79 s. Hiding the SSD's copy made it fall back to the stick (157 s), and the next `drobo-boot-ok` rebuilt the copy. A new set went through its trial boot from the SSD. If you stay on the stick instead: no swap, `noatime` (the installer's default), and consider `Storage=volatile` in `/etc/systemd/journald.conf`.
 
 ## 9. Known limitations
 
 - **Without `drobo-powerbtn` running** (for example in the installer, or before the service starts), the power controller treats a press of the power button as "nothing is running" and cuts power at once, with no shutdown.
 - **The first 16 MB of RAM** are left unused, because writes below 16 MB hang this board early in boot. That leaves 1.98 GB visible.
 - **Hardware crypto (CESA) is off.** Its hash self-tests fail on Debian's 6.12 kernel, so it's blacklisted; the kernel uses software crypto instead.
-- **Boot is slow**, about 2½ minutes, almost all of it U-Boot reading the stick.
+- **Boot from the stick is slow**, about 2½ minutes, almost all of it U-Boot reading the stick over USB. With the mSATA boot partition it's about 80 seconds.
 - **The mSATA slot** is powered from boot (SoC GPIO 66, held high by the device tree). It's the SoC's second SATA port, `ata2`: a 64 GB mSATA SSD came up there at 3 Gbps on 11 Nov and took `sda`, which is why root is found by UUID. It isn't hot-swap: power off first.
 
 ## 10. Troubleshooting

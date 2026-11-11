@@ -1,0 +1,21 @@
+#!/bin/sh
+# drobo-boot-sync: mirror /boot/drobo (on the eUSB stick) onto the mSATA SSD's ext2 boot partition
+# (label drobo-boot), where U-Boot can read it over SATA in about a second instead of ~80 s over USB.
+# U-Boot tries the SSD first and uses the stick if /boot/drobo/VERSION isn't there, so the copy is
+# built beside the old one and swapped in with two renames: at worst U-Boot finds no set and uses the stick.
+# Run by mkdrobokernel and drobo-boot-ok after they change /boot/drobo. Does nothing without the partition.
+DEV=/dev/disk/by-label/drobo-boot
+[ -b "$DEV" ] || { echo "drobo-boot-sync: no drobo-boot partition; nothing to do"; exit 0; }
+mountpoint -q /media/sdboot || { mkdir -p /media/sdboot && mount -o noatime "$DEV" /media/sdboot; } || {
+  echo "drobo-boot-sync: can't mount $DEV" >&2; exit 1; }
+set -e
+mkdir -p /media/sdboot/boot
+rm -rf /media/sdboot/boot/drobo.new /media/sdboot/boot/drobo.old
+cp -a /boot/drobo /media/sdboot/boot/drobo.new
+sync
+[ -d /media/sdboot/boot/drobo ] && mv /media/sdboot/boot/drobo /media/sdboot/boot/drobo.old
+mv /media/sdboot/boot/drobo.new /media/sdboot/boot/drobo
+sync
+rm -rf /media/sdboot/boot/drobo.old
+sync
+echo "drobo-boot-sync: /boot/drobo copied to the SSD boot partition ($(cat /media/sdboot/boot/drobo/SETID 2>/dev/null))"
