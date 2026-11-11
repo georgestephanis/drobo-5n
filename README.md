@@ -238,3 +238,7 @@ For the curious. The details are in the [write-up](https://celestial-star.space.
 ---
 
 November 2026 · written by George Stephanis with Claude. Tested on one Drobo 5N: every step has run on that board, and the kit's `install-on-stick.sh` was run on its installed system and booted. The whole sequence has not yet been repeated on a second, fresh Drobo, so corrections and issues are welcome.
+
+## License
+
+GPL-2.0, the same as the Linux kernel and U-Boot. See [LICENSE](LICENSE). `kit/drobo5n-base.dts` is derived from the mainline kernel's Armada XP device trees, which are GPL-2.0 or MIT.
