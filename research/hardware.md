@@ -38,7 +38,7 @@ Mainboard `100-00041-001 Rev 3.0` (assembly `200-00038-005`). Firmware strings s
 |---|---|---|
 | `J2` (4 holes, under the RF shield) | U-Boot, vxWorks and mainline Linux console (UART0). See [consoles-and-u-boot.md](consoles-and-u-boot.md). | no header fitted; solder wires on; confirmed |
 | `J3` (4-pin header) | Stock Linux console (UART1) | fitted at the factory |
-| Front-panel cable | 3 wires: red, white and blue. Red drives the button's LED (up to about 1.8 V, a ramping blink). White and blue idle near 3.17 V on standby, and the button joins them. **Neither is ground.** An optocoupler across white (collector) and blue (emitter) gives a clean remote "press". | confirmed |
+| Power-button cable (rear of the unit) | 3 wires: red, white and blue. Red drives the button's LED (up to about 1.8 V, a ramping blink). White and blue idle near 3.17 V on standby, and the button joins them. **Neither is ground.** An optocoupler across white (collector) and blue (emitter) gives a clean remote "press". | confirmed |
 | `J7` (backplane) | Fan header: 3 pins, of which the stock fan uses 2 (power and ground). No tach or PWM: the PMU varies the supply voltage. | confirmed |
 | `J19` (underside, 2×4 female, about 2.0 mm pitch) | Reachable by removing the mSATA cover, without opening the case. Unidentified. Candidates: a second internal USB header (the eUSB stick's header is also 2.0 mm female), PMU programming, a UART or test header. | populated, unidentified |
 | `J6` (2×5) | Sized like an ARM JTAG header | footprint, unconfirmed |

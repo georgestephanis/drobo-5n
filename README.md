@@ -210,7 +210,7 @@ cat /sys/class/hwmon/hwmon*/temp1_input  # SoC (and disk) temperatures, millideg
 
 ## 9. Known limitations
 
-- **Power button.** Under Linux the power controller sits in a state where it ignores the front button. To turn the Drobo off, run `sudo poweroff`, wait for the console to go quiet, then unplug it.
+- **Power button.** Under Linux the power controller sits in a state where it ignores the power button on the back of the unit. To turn the Drobo off, run `sudo poweroff`, wait for the console to go quiet, then unplug it.
 - **The first 16 MB of RAM** are left unused, because writes below 16 MB hang this board early in boot. That leaves 1.98 GB visible.
 - **Front panel and bay LEDs** aren't driven yet, although the bay LED lines are named in the device tree (`bay0-led-a`…).
 - **Hardware crypto (CESA) is off.** Its hash self-tests fail on Debian's 6.12 kernel, so it's blacklisted; the kernel uses software crypto instead.
