@@ -10,7 +10,7 @@
 # Meanings:
 #   bay       off = empty, yellow = disk present but bay unpowered (safe to pull),
 #             green = disk in use (a filesystem on it is mounted, or it's part of md/LVM/dm),
-#             slow green blink = disk powered but not in use,
+#             green/yellow alternating = disk powered but not in use (Drobo's "don't remove"; use Safely remove),
 #             blinking red = disk listed in $FAILED_FILE (one bay number per line)
 #   power     green = running, yellow = starting or degraded, red = stopping / other
 #   activity  blinks while any disk reads or writes
@@ -37,7 +37,7 @@ stop_blink() {  # kill the blinker and wait for it, so its line is released befo
 }
 start_blink() { name=$1; shift; "$@" & echo $! > "/run/drobo-leds/$name.pid"; }
 
-bay_set() {  # bay_set N off|green|green-blink|yellow|red|red-blink
+bay_set() {  # bay_set N off|green|green-yellow|yellow|red|red-blink
   n=$1 mode=$2
   eval "last=\$bay_last_$n"; [ "$last" = "$mode" ] && return
   eval "bay_last_$n=$mode"
@@ -48,7 +48,7 @@ bay_set() {  # bay_set N off|green|green-blink|yellow|red|red-blink
     yellow) gpioset -t0 "bay$n-led-a=1" "bay$n-led-b=1" ;;
     red)    gpioset -t0 "bay$n-led-a=0" "bay$n-led-b=1" ;;
     red-blink) gpioset -t0 "bay$n-led-a=0"; start_blink "bay$n" gpioset -t 500ms,500ms "bay$n-led-b=1" ;;
-    green-blink) gpioset -t0 "bay$n-led-b=0"; start_blink "bay$n" gpioset -t 1s,1s "bay$n-led-a=1" ;;
+    green-yellow) gpioset -t0 "bay$n-led-a=1"; start_blink "bay$n" gpioset -t 1s,1s "bay$n-led-b=1" ;;
   esac
 }
 
@@ -151,7 +151,7 @@ update_slow() {
     elif [ "$(gpioget --numeric --as-is "bay$n-power" 2>/dev/null)" = 1 ]; then
       d=$(echo "$disks" | awk -v n="$n" '$1 == n { print $2 }')
       # powered but Linux hasn't found the disk yet (spinning up) counts as not in use
-      if [ -n "$d" ] && disk_in_use "$d"; then bay_set $n green; else bay_set $n green-blink; fi
+      if [ -n "$d" ] && disk_in_use "$d"; then bay_set $n green; else bay_set $n green-yellow; fi
     else bay_set $n yellow
     fi
   done

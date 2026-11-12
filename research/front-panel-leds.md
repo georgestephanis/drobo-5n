@@ -11,7 +11,7 @@ The kit's `drobo-leds` uses its own meanings for the bay lights:
 | Off | Empty bay |
 | Yellow | A disk is in the bay but the bay is switched off: safe to pull |
 | Green | The disk is in use: a filesystem on it is mounted, or md, LVM or dm-crypt holds it |
-| Slow green blink | The disk has power but nothing uses it (sharing off, a filesystem Linux can't read, unmounted for a check, or still spinning up) |
+| Green and yellow, alternating | Don't pull it yet (Drobo's own "don't remove"): the disk has power but nothing has it mounted. Use Safely remove first. It shows for: sharing off, a filesystem Linux can't read, unmounted for a check, or still spinning up |
 | Blinking red | The disk failed its SMART health check |
 
 ## Summary
