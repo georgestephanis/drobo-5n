@@ -84,10 +84,9 @@ SKIP_UI=1 ./build-deb.sh      # package the committed UI build without Node
 
 For UI work, `cd ui && npm install && DROBO=http://drobo5n.local npm run dev` serves the React app locally and proxies the API to a real board. Sign in through the dev server's page.
 
-`tools/screenshots.mjs` takes the screenshots above with headless Chrome (Node 22+, no dependencies). It masks IPv6 addresses, since SLAAC addresses contain the board's MAC:
+`tools/screenshots.mjs` takes the screenshots above with headless Chrome (Node 22+, no dependencies), accepting the self-signed certificate. It masks IPv6 addresses, since SLAAC addresses contain the board's MAC:
 
 ```sh
-ssh -L 8080:localhost:80 drobo5n.local     # in another terminal
 DROBO_URL=https://drobo5n.local DROBO_PASSWORD=... node tools/screenshots.mjs
 ```
 
@@ -99,6 +98,7 @@ DROBO_URL=https://drobo5n.local DROBO_PASSWORD=... node tools/screenshots.mjs
 | `public/` | `index.php` (page shell), `api.php` (JSON API), built assets |
 | `helper/drobo-webui-helper` | The root helper |
 | `sbin/drobo-webui-passwd` | Set or reset the password |
+| `sbin/drobo-webui-cert` | Make or show the HTTPS certificate |
 | `etc/` | lighttpd config and the sudoers rule |
 | `systemd/` | Web server service, alert service and timer |
 | `debian/` | Package metadata and maintainer scripts |

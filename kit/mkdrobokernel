@@ -13,6 +13,12 @@
 # Builds into /boot/drobo/new, checks it, then moves the current set to /boot/drobo/prev and sets
 # /boot/drobo/trial so U-Boot tries the new set once (see drobo-boot-ok).
 # Run as root. Debian runs it from /etc/kernel/postinst.d and /etc/initramfs/post-update.d.
+#
+# mkdrobokernel --rescue [VERSION] builds the rescue set in /boot/drobo/rescue instead: the same files, but
+# root is the Debian root on the eUSB stick (RESCUE_ROOT, default /media/eusb) and the command line adds
+# drobo.rescue=1. U-Boot boots it from the stick when the pinhole button is held at power-on. It never
+# becomes current or prev and has no trial; rebuild it by hand, only with a kernel whose modules the
+# stick root has.
 set -eu
 LIB=/usr/local/lib/drobo
 OUT=/boot/drobo
@@ -23,6 +29,13 @@ LOADBASE=134217728       # 0x8000000
 INITRD_AT=67108864       # 0x4000000 (DTB at 0x3f00000)
 INITRD_MAX=67108864      # initrd must end below 0x8000000
 
+RESCUE=0
+[ "${1:-}" = --rescue ] && { RESCUE=1; shift; }
+# In the rescue system (root on the stick) a kernel hook must not rebuild the main set: it would point at the stick.
+if [ $RESCUE = 0 ] && [ -z "${ROOT_UUID:-}" ] && grep -qw drobo.rescue=1 /proc/cmdline 2>/dev/null; then
+  echo "mkdrobokernel: booted in rescue mode; not touching the main boot set (set ROOT_UUID to force)" >&2
+  exit 0
+fi
 v=${1:-$(uname -r)}
 case "$v" in *armmp-lpae*) ;; *) echo "mkdrobokernel: skipping $v (not armmp-lpae)"; exit 0;; esac
 vmlinuz=/boot/vmlinuz-$v
@@ -36,6 +49,7 @@ le32() {  # print a 32-bit number as 4 little-endian bytes
 }
 
 new=$OUT/new
+[ $RESCUE = 1 ] && new=$OUT/rescue.new
 rm -rf "$new"
 # The root is a 1 GB stick: refuse to build unless a new set (about 10 MB, initrd hard-linked) leaves headroom.
 MIN_FREE_KB=${MIN_FREE_KB:-51200}
@@ -81,7 +95,11 @@ done
 # 4. initrd and DTB.
 isz=$(stat -c %s "$initrd")
 [ "$isz" -lt $INITRD_MAX ] || { echo "mkdrobokernel: initrd too big ($isz)" >&2; exit 1; }
-ln -f "$initrd" "$new/initrd"
+if [ $RESCUE = 1 ]; then
+  cp "$initrd" "$new/initrd"      # its own copy: the rescue set must outlive kernel removals
+else
+  ln -f "$initrd" "$new/initrd"
+fi
 cp "$LIB/drobo5n.dtb" "$new/drobo5n.dtb"
 fdtput -t x "$new/drobo5n.dtb" /chosen linux,initrd-start $(printf %x $INITRD_AT)
 fdtput -t x "$new/drobo5n.dtb" /chosen linux,initrd-end $(printf %x $((INITRD_AT + isz)))
@@ -89,11 +107,18 @@ fdtput -t x "$new/drobo5n.dtb" /chosen linux,initrd-end $(printf %x $((INITRD_AT
 # waiting at a shell only the UART can reach, fsck.repair=yes so an unclean ext2 root gets fixed.
 # ROOT_UUID / ROOT_FSTYPE override the running root (used once, to boot a new root on the mSATA).
 uuid=${ROOT_UUID:-$(findmnt -no UUID /)}; fstype=${ROOT_FSTYPE:-$(findmnt -no FSTYPE /)}
+extra=
+if [ $RESCUE = 1 ]; then
+  rr=${RESCUE_ROOT:-/media/eusb}
+  [ -d "$rr/lib/modules/$v" ] || { echo "mkdrobokernel: $rr has no modules for $v; it can't boot this kernel" >&2; exit 1; }
+  uuid=$(findmnt -no UUID "$rr"); fstype=$(findmnt -no FSTYPE "$rr"); extra=" drobo.rescue=1"
+fi
 [ -n "$uuid" ] || { echo "mkdrobokernel: can't find the root UUID" >&2; exit 1; }
 args=$(fdtget "$new/drobo5n.dtb" /chosen bootargs | sed -E 's/(^| )(root|rootfstype|panic|fsck\.repair)=[^ ]*//g; s/^ +//')
-fdtput -t s "$new/drobo5n.dtb" /chosen bootargs "$args root=UUID=$uuid rootfstype=$fstype panic=10 fsck.repair=yes"
+fdtput -t s "$new/drobo5n.dtb" /chosen bootargs "$args root=UUID=$uuid rootfstype=$fstype panic=10 fsck.repair=yes$extra"
 # A set id, so drobo-boot-ok can tell which set U-Boot actually booted (current or prev).
 setid="$(date +%Y%m%d%H%M%S)-$v"
+[ $RESCUE = 1 ] && setid="rescue-$setid"
 fdtput -t s "$new/drobo5n.dtb" /chosen drobo,set-id "$setid"
 echo "$setid" > "$new/SETID"
 
@@ -105,6 +130,15 @@ while [ $i -lt $NPARTS ]; do
 done
 cmp -s "$tmp/check" "$tmp/blob" || { echo "mkdrobokernel: pieces don't match" >&2; exit 1; }
 echo "$v" > "$new/VERSION"
+
+if [ $RESCUE = 1 ]; then
+  rm -rf "$OUT/rescue.old"
+  [ -d "$OUT/rescue" ] && mv "$OUT/rescue" "$OUT/rescue.old"
+  mv "$new" "$OUT/rescue"; rm -rf "$OUT/rescue.old"; sync
+  echo "mkdrobokernel: rescue set $setid ready in $OUT/rescue (root UUID=$uuid, $fstype)"
+  [ -x /usr/local/sbin/drobo-boot-sync ] && { /usr/local/sbin/drobo-boot-sync || echo "mkdrobokernel: WARNING: copy to the SSD boot partition failed" >&2; }
+  exit 0
+fi
 
 # 6. Swap in: new -> current. Files U-Boot reads live directly in /boot/drobo.
 # The current set only becomes prev if it has booted (drobo-boot-ok writes $OUT/booted-ok after a good boot).

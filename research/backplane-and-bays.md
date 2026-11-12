@@ -29,7 +29,7 @@ Bays are numbered 0 (top) to 4 (bottom). Power is **active-high**; detect is **a
 | 2 | port 0 bits 2, 3 | bit 1 (`0x02`) | bit 1 | 88SE9122 on `pcie@9,0` port 1, 6 Gbps |
 | 3 | port 0 bits 0, 1 | bit 0 (`0x01`) | bit 0 | 88SE9122 on `pcie@8,0` (01:00.0) port 0, 6 Gbps |
 | 4 (bottom) | port 1 bits 0, 1 | bit 4 (`0x10`) | bit 4 | 88SE9122 on `pcie@8,0` port 1, 6 Gbps |
-| mSATA | none | **SoC GPIO 66** (bank 2, mask `0x04`; set at `0xD00181AC`, clear at `0xD00181B0`) | none | probably SoC `sata_mv` port 1 (untested) |
+| mSATA | none | **SoC GPIO 66** (bank 2, mask `0x04`; set at `0xD00181AC`, clear at `0xD00181B0`) | none | SoC `sata_mv` second port (`ata2`); confirmed 11 Nov with a 64 GB mSATA SSD at 3 Gbps |
 
 Register state at power-on: `0x20` reads `ff 03 ff 03 00 00 00 00` (registers 0–7), and `0x23` reads `e0 ff ff ff 00 00 ff ff`.
 

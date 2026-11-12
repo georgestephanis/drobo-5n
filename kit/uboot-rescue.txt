@@ -1,0 +1,12 @@
+setenv dbbtn 'itest.l *d0018190 == 0 || itest.l *d0018190 == 1 || itest.l *d0018190 == 4 || itest.l *d0018190 == 5'
+setenv dbrled 'gpio s 28; gpio c 35'
+setenv dbrdtb 'ext2load $dbif $dbpart 3f00000 /boot/drobo/rescue/drobo5n.dtb'
+setenv dbrini 'ext2load $dbif $dbpart 4000000 /boot/drobo/rescue/initrd'
+setenv dbrk0 'ext2load $dbif $dbpart b000000 /boot/drobo/rescue/kernel.0'
+setenv dbrk1 'ext2load $dbif $dbpart b800000 /boot/drobo/rescue/kernel.1'
+setenv dbrk2 'ext2load $dbif $dbpart c000000 /boot/drobo/rescue/kernel.2'
+setenv dbrk3 'ext2load $dbif $dbpart c800000 /boot/drobo/rescue/kernel.3'
+setenv dbrk4 'ext2load $dbif $dbpart d000000 /boot/drobo/rescue/kernel.4'
+setenv dbresc 'echo DROBO: button held, rescue system from the stick; run dbrled dbstick dbrdtb dbrini dbrk0 dbrk1 dbrk2 dbrk3 dbrk4 dbu0 dbu1 dbu2 dbu3 dbu4 dbboot'
+setenv dbsel 'run dbled; setenv dbtrialid; if run dbbtn; then run dbresc; run dbled; fi; run dbpick; if ext2load $dbif $dbpart 1000000 /boot/drobo/trial; then source 1000000; run dbtrial; else run dbnorm; fi'
+saveenv
