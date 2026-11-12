@@ -44,11 +44,11 @@ It needs about 25 MB with its dependencies (lighttpd, PHP). On a system running 
 
 ## Install
 
-Download the package from the [releases page](https://github.com/georgestephanis/drobo-5n/releases/tag/webui-v0.3.0), or build it yourself (see [Building](#building)). Then, on the Drobo with the kit already installed:
+Download the package from the [releases page](https://github.com/georgestephanis/drobo-5n/releases/tag/webui-v0.4.3), or build it yourself (see [Building](#building)). Then, on the Drobo with the kit already installed:
 
 ```sh
-wget https://github.com/georgestephanis/drobo-5n/releases/download/webui-v0.3.0/drobo-webui_0.3.0_all.deb
-sudo apt install ./drobo-webui_0.3.0_all.deb
+wget https://github.com/georgestephanis/drobo-5n/releases/download/webui-v0.4.3/drobo-webui_0.4.3_all.deb
+sudo apt install ./drobo-webui_0.4.3_all.deb
 sudo drobo-webui-passwd          # set the dashboard password
 ```
 

@@ -66,6 +66,8 @@ Then the optional parts, each in README section 9 (Optional extras): root on the
 - **Kernel updates** need nothing special: `apt upgrade` runs `mkdrobokernel` from the kernel and initramfs hooks (twice per install; that's expected). The first boot of a new set is a trial; if it doesn't come up, U-Boot boots `prev` and `drobo-boot-ok` restores it. Check `journalctl -u drobo-boot-ok` a minute after boot.
 - **The board won't come up normally:** have the person hold the pinhole button (beside the power socket) with a paper clip while pressing power, until the power light turns red, 15–20 s after pressing power (it's yellow for a moment first). That boots the rescue system from the stick (`drobo.rescue=1` in `/proc/cmdline`). The SSD root isn't mounted; mount it by UUID to repair it. Don't run `apt upgrade` in the rescue system.
 - **From the U-Boot prompt:** `run dbpick dbprv dbboot` boots the previous set once; `run dbresc` boots the rescue system.
+- **Power supply:** more than two spinning disks need the Drobo's own 12 V, 8.33 A (100 W) supply. On a 4 A supply, a third disk spinning up made the power controller report a power failure, and later boots lost power as soon as `drobo-bays` switched on a bay. If the board shuts down or boot-loops with several disks in, have the person pull all but one or two before anything else.
+- **Bay lights** (`/usr/local/sbin/drobo-leds status` prints each bay's light and why): dark = empty or switched off, safe to pull (only while the power light is green); yellow = powered, not mounted; green = in use; green/red = at least 95% full; green/yellow = busy, don't remove; red = needs attention (`/run/drobo-leds/attention-bays`); blinking red = failed SMART.
 - **Going back to Drobo OS:** README section 12 (write the stick image back, then restore `amp_enable yes` and `bootcmd amp_boot`).
 
 ## Things that look broken but aren't
@@ -75,3 +77,4 @@ Then the optional parts, each in README section 9 (Optional extras): root on the
 - The first 16 MB of RAM unused (1.98 GB visible): deliberate, writes below 16 MB hang this board.
 - Hardware crypto (CESA) blacklisted: its self-tests fail on Debian's 6.12 kernel.
 - Before `drobo-powerbtn` starts, a press of the power button cuts power at once.
+- Every bay light dark while booting: `drobo-leds` hasn't started yet. Don't read "dark" as "safe to pull" until the power light is green.
