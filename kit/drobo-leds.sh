@@ -8,7 +8,9 @@
 #   gauge      PCA9555 0x21 on i2c-0 (no kernel driver), outputs 0-9, left to right: bits 0 4 1 5 2 6 3 7 8 9
 #
 # Meanings:
-#   bay       off = empty, yellow = disk present but bay unpowered, green = disk powered,
+#   bay       off = empty, yellow = disk present but bay unpowered (safe to pull),
+#             green = disk in use (a filesystem on it is mounted, or it's part of md/LVM/dm),
+#             slow green blink = disk powered but not in use,
 #             blinking red = disk listed in $FAILED_FILE (one bay number per line)
 #   power     green = running, yellow = starting or degraded, red = stopping / other
 #   activity  blinks while any disk reads or writes
@@ -35,7 +37,7 @@ stop_blink() {  # kill the blinker and wait for it, so its line is released befo
 }
 start_blink() { name=$1; shift; "$@" & echo $! > "/run/drobo-leds/$name.pid"; }
 
-bay_set() {  # bay_set N off|green|yellow|red|red-blink
+bay_set() {  # bay_set N off|green|green-blink|yellow|red|red-blink
   n=$1 mode=$2
   eval "last=\$bay_last_$n"; [ "$last" = "$mode" ] && return
   eval "bay_last_$n=$mode"
@@ -46,6 +48,7 @@ bay_set() {  # bay_set N off|green|yellow|red|red-blink
     yellow) gpioset -t0 "bay$n-led-a=1" "bay$n-led-b=1" ;;
     red)    gpioset -t0 "bay$n-led-a=0" "bay$n-led-b=1" ;;
     red-blink) gpioset -t0 "bay$n-led-a=0"; start_blink "bay$n" gpioset -t 500ms,500ms "bay$n-led-b=1" ;;
+    green-blink) gpioset -t0 "bay$n-led-b=0"; start_blink "bay$n" gpioset -t 1s,1s "bay$n-led-a=1" ;;
   esac
 }
 
@@ -114,13 +117,41 @@ EOF2
   [ "$t" -gt 0 ] && echo $((u * 100 / t)) || echo 0
 }
 
+# bay_disks: print "BAY NAME" for each sd disk in a bay (bay0 = SoC port 1, bays 1-2 and 3-4 on the two PCIe controllers)
+bay_disks() {
+  local d p a port
+  for d in /sys/block/sd*; do
+    [ -e "$d" ] || continue
+    p=$(readlink -f "$d/device") || continue
+    a=$(echo "$p" | sed -n 's#.*/\(ata[0-9]*\)/.*#\1#p'); [ -n "$a" ] || continue
+    port=$(cat "/sys/class/ata_port/$a/port_no" 2>/dev/null)
+    case $p in
+      */d00a0000.sata/*) [ "$port" = 1 ] && echo "0 ${d##*/}" ;;
+      */0000:02:00.0/*) echo "$port ${d##*/}" ;;
+      */0000:01:00.0/*) echo "$((port + 2)) ${d##*/}" ;;
+    esac
+  done
+}
+
+# disk_in_use NAME: a filesystem on the disk or one of its partitions is mounted, or md/LVM/dm holds it
+disk_in_use() {
+  grep -q "^/dev/$1[0-9]* " /proc/mounts && return 0
+  [ -n "$(ls /sys/block/$1/holders 2>/dev/null)" ] && return 0
+  for h in /sys/block/$1/$1*/holders; do [ -n "$(ls "$h" 2>/dev/null)" ] && return 0; done
+  return 1
+}
+
 disk_io() { awk '$3 ~ /^(sd[a-z]+|nvme[0-9]+n[0-9]+)$/ { s += $6 + $10 } END { print s + 0 }' /proc/diskstats; }
 
 update_slow() {
+  disks=$(bay_disks)
   for n in 0 1 2 3 4; do
     if grep -qx "$n" "$FAILED_FILE" 2>/dev/null; then bay_set $n red-blink
     elif [ "$(gpioget --numeric "bay$n-detect" 2>/dev/null)" != 0 ]; then bay_set $n off
-    elif [ "$(gpioget --numeric --as-is "bay$n-power" 2>/dev/null)" = 1 ]; then bay_set $n green
+    elif [ "$(gpioget --numeric --as-is "bay$n-power" 2>/dev/null)" = 1 ]; then
+      d=$(echo "$disks" | awk -v n="$n" '$1 == n { print $2 }')
+      # powered but Linux hasn't found the disk yet (spinning up) counts as not in use
+      if [ -n "$d" ] && disk_in_use "$d"; then bay_set $n green; else bay_set $n green-blink; fi
     else bay_set $n yellow
     fi
   done

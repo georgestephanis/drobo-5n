@@ -236,6 +236,12 @@ try {
             preg_match('/^[A-Za-z0-9-]{1,64}$/', $uuid) || fail('bad disk id');
             reply(Sharing::eject($uuid));
 
+        case 'disk-mount':
+        case 'disk-power-on':
+            $uuid = $args[0] ?? '';
+            preg_match('/^[A-Za-z0-9-]{1,64}$/', $uuid) || fail('bad disk id');
+            reply($verb === 'disk-mount' ? Sharing::mount($uuid) : Sharing::powerOn($uuid));
+
         case 'disk-forget':
             $uuid = $args[0] ?? '';
             preg_match('/^[A-Za-z0-9-]{1,64}$/', $uuid) || fail('bad disk id');

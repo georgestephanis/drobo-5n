@@ -457,6 +457,37 @@ final class Sharing
         return ['bay' => (int) $m[1]];
     }
 
+    /** Mount and share a disk that's in a bay and seen by Linux but not mounted (after a failed mount, or by hand). */
+    public static function mount(string $uuid): array
+    {
+        $dev = self::devOf($uuid) ?? throw new RuntimeException('That disk is not connected.');
+        self::load()['enabled'] || throw new RuntimeException('Turn sharing on first.');
+        $r = self::attach(basename($dev));
+        isset($r['skipped']) && throw new RuntimeException('Not mounted: ' . $r['skipped'] . '.');
+        ($r['mounted'] ?? false) || throw new RuntimeException('Not mounted: ' . (self::load()['disks'][$uuid]['error'] ?? 'unknown error'));
+        return $r;
+    }
+
+    /** Switch a known disk's bay back on after "Safely remove" while it's still in the bay. Linux finds it, and it mounts by itself. */
+    public static function powerOn(string $uuid): array
+    {
+        $d = self::load()['disks'][$uuid] ?? throw new InvalidArgumentException('Unknown disk');
+        self::devOf($uuid) === null || throw new RuntimeException('That disk is already switched on.');
+        $bay = self::offBay($d) ?? throw new RuntimeException('That disk is not in a switched-off bay.');
+        Privileged::setBayPower($bay, true);
+        return ['bay' => $bay];
+    }
+
+    /** The bay a disk was last seen in, if that bay still holds a disk and is switched off. */
+    private static function offBay(array $d, ?array $bays = null): ?int
+    {
+        if (!preg_match('/^bay([0-4])$/', (string) ($d['lastSlot'] ?? ''), $m)) {
+            return null;
+        }
+        $b = ($bays ?? Privileged::bays())[(int) $m[1]] ?? null;
+        return $b && $b['present'] && !$b['powered'] ? (int) $m[1] : null;
+    }
+
     public static function forget(string $uuid): void
     {
         self::locked(static function (array &$s) use ($uuid): void {
@@ -745,6 +776,7 @@ final class Sharing
             }
         }
         $disks = [];
+        $bays = Privileged::bays();
         foreach ($s['disks'] as $uuid => $d) {
             $dev = $byUuid[$uuid] ?? null;
             $path = self::ROOT . '/' . $d['name'];
@@ -763,6 +795,7 @@ final class Sharing
                 'lastSeen' => $d['lastSeen'] ?? null,
                 'slot' => $dev ? $bayDevs[$dev]['slot'] : null,
                 'lastSlot' => $d['lastSlot'] ?? null,
+                'offBay' => $dev ? null : self::offBay($d, $bays),
                 'device' => $dev,
                 'mounted' => $isMounted,
                 'used' => $isMounted ? (float) (disk_total_space($path) - disk_free_space($path)) : null,

@@ -84,6 +84,7 @@ function where(d) {
 }
 
 function diskState(d, sh) {
+  if (!d.slot && d.offBay != null) return <Pill level="muted">Switched off in bay {d.offBay}</Pill>;
   if (!d.slot) return <Pill level="muted">Not connected</Pill>;
   if (!sh.enabled) return <Pill level="muted">Sharing off</Pill>;
   if (d.error) return <Pill level="critical">Can't mount</Pill>;
@@ -105,6 +106,9 @@ function Disks({ sh, apply }) {
     if (!window.confirm(`Safely remove "${d.name}"? It's unmounted and its bay is switched off; when the bay light turns yellow you can pull it.`)) return;
     post({ uuid: d.uuid, action: 'eject' }, `${d.name} is unmounted and its bay is off. Pull it when the bay light is yellow.`);
   };
+  const mount = (d) => post({ uuid: d.uuid, action: 'mount' }, `${d.name} is mounted and shared.`);
+  const powerOn = (d) => post({ uuid: d.uuid, action: 'poweron' },
+    `Bay ${d.offBay} is on. ${d.name} spins up and is shared again in about 20 seconds.`);
   const forget = (d) => {
     if (!window.confirm(`Forget "${d.name}"? Its name, its read-only setting and who may use it are dropped. Nothing on the disk changes.`)) return;
     post({ uuid: d.uuid, action: 'forget' }, `${d.name} forgotten.`);
@@ -146,6 +150,10 @@ function Disks({ sh, apply }) {
                   <td>{diskState(d, sh)}{d.error && <div className="sub">{d.error}</div>}</td>
                   <td className="actions">
                     <button className="link" onClick={() => rename(d)} disabled={act.busy}>Rename</button>
+                    {d.slot && sh.enabled && !d.mounted &&
+                      <button onClick={() => mount(d)} disabled={act.busy}>{d.error ? 'Try again' : 'Mount'}</button>}
+                    {!d.slot && d.offBay != null &&
+                      <button onClick={() => powerOn(d)} disabled={act.busy}>Turn on</button>}
                     {d.slot
                       ? <button onClick={() => eject(d)} disabled={act.busy}>Safely remove</button>
                       : <button className="link" onClick={() => forget(d)} disabled={act.busy}>Forget</button>}

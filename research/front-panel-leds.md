@@ -4,6 +4,16 @@ Mapped on 2026-11-11 under Debian, by driving each line and watching the panel, 
 
 The faceplate's label gives Drobo's meanings: green = healthy, yellow = add a drive soon, blinking green/yellow = don't remove, red = add a drive now, blinking red = drive failed.
 
+The kit's `drobo-leds` uses its own meanings for the bay lights:
+
+| Bay light | Meaning |
+|---|---|
+| Off | Empty bay |
+| Yellow | A disk is in the bay but the bay is switched off: safe to pull |
+| Green | The disk is in use: a filesystem on it is mounted, or md, LVM or dm-crypt holds it |
+| Slow green blink | The disk has power but nothing uses it (sharing off, a filesystem Linux can't read, unmounted for a check, or still spinning up) |
+| Blinking red | The disk failed its SMART health check |
+
 ## Summary
 
 | LED | Driven by | Colours |

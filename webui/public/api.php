@@ -146,6 +146,8 @@ try {
                 'writable' => Helper::call('disk-set', [$uuid, 'writable', !empty($b['on']) ? 'on' : 'off'], null, 180),
                 'rename' => Helper::call('disk-set', [$uuid, 'name', (string) ($b['name'] ?? '')], null, 180),
                 'eject' => Helper::call('disk-eject', [$uuid], null, 180),
+                'mount' => Helper::call('disk-mount', [$uuid], null, 180),
+                'poweron' => Helper::call('disk-power-on', [$uuid], null, 60),
                 'forget' => Helper::call('disk-forget', [$uuid]),
                 default => out(['error' => 'Unknown disk action.'], 400),
             });
