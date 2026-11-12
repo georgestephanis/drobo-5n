@@ -15,6 +15,8 @@ How to replace Drobo OS on a Drobo 5N with plain Debian 13 that boots by itself,
 
 For what we learned about the hardware, U-Boot, the power controller and the stock firmware, see [`research/`](research/).
 
+If you'd like an AI agent to help you through it, [`skills/drobo5n-debian/SKILL.md`](skills/drobo5n-debian/SKILL.md) is an Agent Skill for that: it covers what the agent can do and what needs your hands, how to drive this U-Boot's console without dropping characters, a checkpoint for each step, and the commands that hang or brick this board. For Claude Code, copy the folder to `~/.claude/skills/`.
+
 ## Steps
 
 1. [What you need](#1-what-you-need)
