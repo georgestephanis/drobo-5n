@@ -22,6 +22,7 @@ It needs about 25 MB with its dependencies (lighttpd, PHP). On a system running 
 - **Power:** the 12 V input voltage and the backup battery (a single 18650 cell) as read by the PMU, with a rough charge level. If the power fails, the PMU signals Linux and the battery carries the box through a clean shutdown; the dashboard shows when it's running on battery.
 - **Settings:**
   - Device name (`NAME.local`).
+  - Date and time: time zone, network time on or off, your own time servers, and setting the clock by hand when network time is off.
   - Fan curve (`/etc/default/drobo-fan`).
   - Which filesystems the capacity lights count (`/etc/default/drobo-leds`).
   - E-mail alerts through any SMTP server (STARTTLS, SSL or plain), with a test button.
@@ -33,11 +34,11 @@ It needs about 25 MB with its dependencies (lighttpd, PHP). On a system running 
 
 ## Install
 
-Download the package from the [releases page](https://github.com/georgestephanis/drobo-5n/releases/tag/webui-v0.1.2), or build it yourself (see [Building](#building)). Then, on the Drobo with the kit already installed:
+Download the package from the [releases page](https://github.com/georgestephanis/drobo-5n/releases/tag/webui-v0.1.3), or build it yourself (see [Building](#building)). Then, on the Drobo with the kit already installed:
 
 ```sh
-wget https://github.com/georgestephanis/drobo-5n/releases/download/webui-v0.1.2/drobo-webui_0.1.2_all.deb
-sudo apt install ./drobo-webui_0.1.2_all.deb
+wget https://github.com/georgestephanis/drobo-5n/releases/download/webui-v0.1.3/drobo-webui_0.1.3_all.deb
+sudo apt install ./drobo-webui_0.1.3_all.deb
 sudo drobo-webui-passwd          # set the dashboard password
 ```
 
