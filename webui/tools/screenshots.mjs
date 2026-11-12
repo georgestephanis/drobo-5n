@@ -1,7 +1,7 @@
 // Take the README screenshots of a running drobo-webui with headless Chrome (DevTools protocol,
 // Node's built-in WebSocket; no dependencies).
 //
-//   DROBO_URL=http://localhost:8080 DROBO_PASSWORD=... node tools/screenshots.mjs
+//   DROBO_URL=https://drobo5n.local DROBO_PASSWORD=... node tools/screenshots.mjs
 //
 // IPv6 addresses are masked before each capture: SLAAC addresses contain the board's MAC.
 import { spawn } from 'node:child_process';
@@ -23,7 +23,7 @@ const SHOTS = [
   { file: 'status-dark.png', page: 'status', width: 1280, height: 980, dark: true },
   { file: 'disks.png', page: 'disks', width: 1280, height: 760 },
   { file: 'system.png', page: 'system', width: 1280, height: 760 },
-  { file: 'settings.png', page: 'settings', width: 1280, height: 1680 },
+  { file: 'settings.png', page: 'settings', width: 1280, height: 2300 },
   { file: 'logs.png', page: 'logs', width: 1280, height: 760 },
   { file: 'status-mobile.png', page: 'status', width: 390, height: 1500, mobile: true },
 ];
@@ -31,7 +31,7 @@ const SHOTS = [
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const profile = mkdtempSync(join(tmpdir(), 'drobo-shots-'));
 const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=9333', `--user-data-dir=${profile}`,
-  '--hide-scrollbars', '--no-first-run', '--no-default-browser-check', 'about:blank'], { stdio: 'ignore' });
+  '--hide-scrollbars', '--ignore-certificate-errors', '--no-first-run', '--no-default-browser-check', 'about:blank'], { stdio: 'ignore' });
 
 let ws;
 let seq = 0;

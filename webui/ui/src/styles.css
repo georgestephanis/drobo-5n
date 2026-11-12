@@ -199,12 +199,13 @@ input:focus, select:focus { outline: 2px solid rgba(124, 194, 66, 0.45); border-
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
 .card-actions .row { margin: 0; }
 .card-actions select { width: auto; }
-button {
-  font: inherit; font-weight: 600; cursor: pointer;
+button, a.button {
+  font: inherit; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block;
   border: 1px solid var(--line); background: var(--card); color: var(--text);
   border-radius: 6px; padding: 7px 14px;
 }
-button:hover:not(:disabled) { border-color: var(--dim); }
+button:hover:not(:disabled), a.button:hover { border-color: var(--dim); }
+code.fingerprint { font-size: 0.78em; word-break: break-all; }
 button:disabled { opacity: 0.55; cursor: default; }
 button.primary { background: var(--green); border-color: var(--green-dark); color: #fff; }
 button.primary:hover:not(:disabled) { background: var(--green-dark); }

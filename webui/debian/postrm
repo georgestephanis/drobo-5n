@@ -2,6 +2,7 @@
 set -e
 if [ "$1" = purge ]; then
   rm -f /etc/drobo-webui/config.json /etc/drobo-webui/config.json.new
+  rm -rf /etc/drobo-webui/tls
   rmdir /etc/drobo-webui 2>/dev/null || true
   rm -rf /var/lib/drobo-webui /run/drobo-webui
   # Time servers chosen in Settings: back to Debian's defaults

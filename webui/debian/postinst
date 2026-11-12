@@ -23,7 +23,7 @@ if [ "$1" = configure ]; then
   if ! grep -q '"passwordHash": "' /etc/drobo-webui/config.json; then
     echo
     echo "drobo-webui: set the dashboard password with:  sudo drobo-webui-passwd"
-    echo "             then open http://$(hostname).local/"
+    echo "             then open https://$(hostname).local/ (self-signed: your browser will ask once)"
   fi
 fi
 exit 0

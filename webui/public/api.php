@@ -139,6 +139,19 @@ try {
             $b = body();
             out(Helper::call('set-disks', [(string) (int) ($b['spindownMinutes'] ?? 0), (string) ($b['smartSchedule'] ?? '')], null, 60));
 
+        case 'GET https':
+            out(Https::info());
+
+        case 'GET https/cert':
+            $pem = Https::pem() ?? out(['error' => 'There is no certificate yet.'], 404);
+            header('Content-Type: application/x-x509-ca-cert');
+            header('Content-Disposition: attachment; filename="' . preg_replace('/[^a-z0-9-]/', '', strtolower((string) gethostname())) . '.crt"');
+            echo $pem;
+            exit;
+
+        case 'POST https':
+            out(Helper::call('https', [(string) (body()['action'] ?? '')], null, 60));
+
         case 'POST power':
             out(Helper::call('power', [(string) (body()['action'] ?? '')]));
 

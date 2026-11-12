@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { useAction } from '../hooks.js';
-import { Card, Field, Message } from './ui.jsx';
+import { Card, Facts, Field, Message } from './ui.jsx';
 
 export default function SettingsPage({ reloadSession }) {
   const [data, setData] = useState(null);
@@ -23,6 +23,7 @@ export default function SettingsPage({ reloadSession }) {
         <DiskCare data={data} onSaved={load} />
         <Password />
         <Alerts data={data} onSaved={load} />
+        <Https />
         <Power />
         <Updates />
       </div>
@@ -319,6 +320,46 @@ function Password() {
         <Message state={act} />
         <p className="hint">Forgot it? On the Drobo, run <code>sudo drobo-webui-passwd</code>.</p>
       </form>
+    </Card>
+  );
+}
+
+function Https() {
+  const [h, setH] = useState(null);
+  const [act, run] = useAction();
+  useEffect(() => { api.get('https').then(setH, () => setH({ https: false, cert: null })); }, []);
+  if (!h) return null;
+  const c = h.cert;
+  const day = (t) => new Date(t * 1000).toLocaleDateString(undefined, { dateStyle: 'medium' });
+  const httpsUrl = `https://${window.location.hostname}/`;
+  const renew = () => {
+    if (!window.confirm('Make a new certificate? Browsers and computers that trusted the old one will ask again. The dashboard restarts.')) return;
+    run(async () => {
+      await api.post('https', { action: 'renew' });
+      setTimeout(() => window.location.reload(), 6000);
+    }, 'New certificate made. Reloading in a few seconds.');
+  };
+  return (
+    <Card title="HTTPS">
+      <p>
+        {h.https ? <span className="pill ok">This page is encrypted</span> : <span className="pill warning">This page is plain HTTP</span>}{' '}
+        {!h.https && c && <a href={httpsUrl}>Open it over HTTPS</a>}
+      </p>
+      <p className="hint">The certificate is self-signed, so browsers warn the first time. To stop the warning on a Mac, download it, open it in Keychain Access and set it to Always Trust. First check that the fingerprint matches.</p>
+      {c ? (
+        <>
+          <Facts rows={[
+            ['Names', c.names.join(', ')],
+            ['Valid', `${day(c.notBefore)} to ${day(c.notAfter)}`],
+            ['SHA-256', <code className="fingerprint">{c.sha256}</code>],
+          ]} />
+          <div className="row">
+            <a className="button" href="api.php?r=https/cert" download>Download certificate</a>
+            <button onClick={renew} disabled={act.busy}>Make a new one</button>
+          </div>
+        </>
+      ) : <p className="msg warning">No certificate yet. On the Drobo, run: sudo systemctl restart drobo-webui</p>}
+      <Message state={act} />
     </Card>
   );
 }

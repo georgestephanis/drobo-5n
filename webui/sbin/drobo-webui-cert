@@ -1,0 +1,54 @@
+#!/bin/sh
+# drobo-webui-cert ensure|renew|info : the dashboard's self-signed HTTPS certificate.
+#   ensure  make one if it's missing, expires within 30 days, or doesn't name this host (run at
+#           every start of drobo-webui.service)
+#   renew   always make a new one (then: sudo systemctl restart drobo-webui)
+#   info    print the certificate's names, dates and SHA-256 fingerprint
+# The key never leaves /etc/drobo-webui/tls and only root can read it; lighttpd loads it before it
+# drops to www-data.
+set -eu
+DIR=/etc/drobo-webui/tls
+CERT=$DIR/cert.pem
+KEY=$DIR/key.pem
+DAYS=825        # Apple's limit for a TLS server certificate, even one you trust by hand
+H=$(hostname -s)
+
+valid() {
+  [ -s "$CERT" ] && [ -s "$KEY" ] || return 1
+  openssl x509 -in "$CERT" -noout -checkend 2592000 >/dev/null 2>&1 || return 1
+  openssl x509 -in "$CERT" -noout -ext subjectAltName 2>/dev/null | grep -q "DNS:$H\.local\b" || return 1
+}
+
+make() {
+  [ "$(id -u)" = 0 ] || { echo "drobo-webui-cert: run with sudo" >&2; exit 1; }
+  install -d -m 0755 "$DIR"
+  umask 077
+  t=$(mktemp -d "$DIR/.new.XXXXXX")
+  openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -sha256 \
+    -days "$DAYS" -subj "/CN=$H.local/O=drobo-webui" \
+    -addext "subjectAltName=DNS:$H.local,DNS:$H,DNS:localhost,IP:127.0.0.1" \
+    -addext "basicConstraints=critical,CA:FALSE" \
+    -addext "keyUsage=critical,digitalSignature" \
+    -addext "extendedKeyUsage=serverAuth" \
+    -keyout "$t/key.pem" -out "$t/cert.pem" 2>/dev/null
+  chmod 0600 "$t/key.pem"
+  chmod 0644 "$t/cert.pem"
+  # Keep the previous pair, in case something trusted it
+  if [ -e "$CERT" ]; then
+    mv -f "$CERT" "$CERT.old"
+    mv -f "$KEY" "$KEY.old"
+  fi
+  mv "$t/key.pem" "$KEY"
+  mv "$t/cert.pem" "$CERT"
+  rmdir "$t"
+  echo "drobo-webui-cert: new certificate for $H.local, valid $DAYS days"
+}
+
+case "${1:-}" in
+  ensure) valid || make ;;
+  renew) make ;;
+  info)
+    [ -s "$CERT" ] || { echo "no certificate yet" >&2; exit 1; }
+    openssl x509 -in "$CERT" -noout -subject -startdate -enddate -ext subjectAltName -fingerprint -sha256 ;;
+  *) echo "usage: drobo-webui-cert ensure|renew|info" >&2; exit 2 ;;
+esac

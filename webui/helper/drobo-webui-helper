@@ -44,6 +44,13 @@ function fromWeb(): bool
     return getenv('SUDO_USER') === 'www-data';
 }
 
+/** Restart the web server a moment from now, so the reply to this request gets out first. */
+function restartWebSoon(): void
+{
+    Shell::run(['systemd-run', '--unit=drobo-webui-restart', '--collect', '--on-active=2',
+        '/usr/bin/systemctl', 'restart', 'drobo-webui.service']);
+}
+
 if (posix_geteuid() !== 0) {
     fail('must run as root (through sudo)');
 }
@@ -97,7 +104,18 @@ try {
             }
             file_put_contents('/etc/hosts', $hosts);
             Shell::run(['systemctl', 'try-restart', 'avahi-daemon.service']);
+            // The HTTPS certificate names the host; the restart makes a new one (drobo-webui-cert ensure).
+            if ($name !== $old) {
+                restartWebSoon();
+            }
             reply(['hostname' => $name, 'previous' => $old]);
+
+        case 'https':
+            ($args[0] ?? '') === 'renew' || fail('Unknown action');
+            [$code, $out, $err] = Shell::run(['/usr/sbin/drobo-webui-cert', 'renew']);
+            $code === 0 || fail('drobo-webui-cert failed: ' . trim($err . $out));
+            restartWebSoon();
+            reply(['restarting' => true]);
 
         case 'set-timezone':
             $tz = $args[0] ?? '';
