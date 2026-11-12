@@ -227,7 +227,7 @@ cat /sys/class/hwmon/hwmon*/temp1_input  # SoC (and disk) temperatures, millideg
 - **Fan.** `drobo-fand` sets the speed (01–31) from the hottest sensor, resent every 30 s. The power controller winds the speed down by itself if nobody keeps setting it. It never goes below 16, because the stock fan's bearing can stall at low speed. Tune it in `/etc/default/drobo-fan`, for example `FLOOR=12 SOC_HI=70`. If the fan doesn't start after a cold boot, give it a nudge, or replace it.
 - **Kernel updates.** After `apt upgrade` installs a kernel or rebuilds an initrd, the hook rebuilds `/boot/drobo`. Each set's DTB carries an id (`/chosen/drobo,set-id`), the root by UUID, `panic=10` and `fsck.repair=yes`. A minute after boot, `drobo-boot-ok` checks which set booted. If it was the current one, it records its checksums and clears the trial flag; `mkdrobokernel` only moves a set into `prev` after that, so `prev` is always a set that booted (Debian runs the hook twice per install). If U-Boot fell back to `prev` after a failed trial, it moves the broken set to `/boot/drobo/failed`, copies `prev` back as current, and logs a warning (`journalctl -u drobo-boot-ok`). `mkdrobokernel` refuses to build with less than 50 MB free. All of this was tested on 11 Nov, including a set with a wrong root UUID: it panicked, reset, and came back on `prev` with nobody at the console.
 - **Watchdog.** systemd keeps the SoC watchdog running (`RuntimeWatchdogSec=60s`, from `drobo-watchdog.conf`). If the system hangs for a minute, the board resets. A watchdog reset was tested and comes back through U-Boot as normal.
-- **Power button.** A short press on the back does a clean shutdown: the power LED turns red, Linux shuts down, and the power goes off. `drobo-powerbtn` sends the power controller "CPU is up" (`K`) at boot and runs `poweroff` when it raises the power-down request (SoC GPIO 40). `sudo poweroff` also really powers off: the last shutdown step sends the controller `S`. Press the button again to power on.
+- **Power button.** A short press on the back does a clean shutdown: the power LED turns red, Linux shuts down, and the power goes off. `drobo-powerbtn` sends the power controller "CPU is up" (`K`) at boot and runs `poweroff` when it raises the power-down request (SoC GPIO 40). `sudo poweroff` also really powers off: the last shutdown step sends the controller `S`. Press the button again to power on. A power cut does the same thing: the backup battery holds the board up long enough for a clean shutdown (3.5 s measured), and the journal says "power failed, running on battery" instead of "power button pressed".
 - **Root and boot files on the mSATA SSD (recommended).** The 1 GB stick is tight, wears out, and is slow: U-Boot needs about 80 s to read 20 MB from it. U-Boot can read the SSD over SATA in about a second, but its ext2 driver can't read ext4 (it **hangs** on an ext4 partition), so the SSD gets two partitions: ext4 for root, and a small ext2 `drobo-boot` partition at the end that holds a copy of `/boot/drobo`. The stick keeps the master copy at `/boot` and stays the fallback: U-Boot uses the stick whenever the SSD's copy is missing, and the old root stays on the stick for the `prev` set. With an SSD in the slot (power off first; it shows up as `sda`, and the stick moves to `sdb`):
 
   ```sh
@@ -254,6 +254,19 @@ cat /sys/class/hwmon/hwmon*/temp1_input  # SoC (and disk) temperatures, millideg
 - **Web dashboard (optional).** [`webui/`](webui/) is a separate package, `drobo-webui`, with a browser dashboard in the spirit of Drobo Dashboard. It covers bays and the front panel, capacity, SMART, temperatures and the fan, network and services, logs, and e-mail alerts. It also has settings for the device name, the fan curve, the capacity lights, bay power, and restart or shut down. It takes about 25 MB with lighttpd and PHP, and nothing else in the kit needs it, so skip it on a stick-only install. Download it from [the webui-v0.1.3 release](https://github.com/georgestephanis/drobo-5n/releases/tag/webui-v0.1.3), and see [`webui/README.md`](webui/README.md).
 
   ![drobo-webui status page](webui/screenshots/status.png)
+
+- **File sharing (SMB).** Samba works as on any Debian box. [`kit/smb.conf`](kit/smb.conf) is a starting point: SMB2 and newer only, no guest access, the macOS `fruit` options, and one share, `Drobo`, at `/srv/drobo`. Point `path` at your bay disks once they're mounted. `wsdd2` makes the Drobo show up under Network in Windows; macOS finds it through Avahi, which Debian already runs.
+
+  ```sh
+  sudo apt install --no-install-recommends samba wsdd2       # about 75 MB
+  sudo cp /etc/samba/smb.conf /etc/samba/smb.conf.debian-orig
+  sudo cp smb.conf /etc/samba/smb.conf && testparm -s
+  sudo install -d -o $USER -g $USER -m 775 /srv/drobo
+  sudo smbpasswd -a $USER                                    # a separate password, just for SMB
+  sudo systemctl restart smbd nmbd
+  ```
+
+  Then connect from a Mac with `smb://drobo5n.local/Drobo`. Tested on 11 Nov from macOS: it showed up in Finder by itself, negotiated SMB 3.1.1 with signing, and writing, renaming and moving files all worked.
 
 ## 9. Known limitations
 
