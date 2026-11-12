@@ -195,7 +195,7 @@ final class Sharing
         if (self::inFstab($dev, $p)) {
             return ['skipped' => 'listed in /etc/fstab'];
         }
-        return self::locked(static function (array &$s) use ($dev, $p, $slot): array {
+        $r = self::locked(static function (array &$s) use ($dev, $p, $slot): array {
             $rec = self::remember($s, $dev, $p, $slot);
             $r = ['uuid' => $p['uuid'], 'name' => $rec['name']];
             if ($s['enabled']) {
@@ -204,6 +204,18 @@ final class Sharing
             }
             return $r;
         });
+        self::lightAttention();
+        return $r;
+    }
+
+    /** A disk that won't mount lights its bay red; one that mounts again clears it. */
+    private static function lightAttention(): void
+    {
+        try {
+            posix_geteuid() === 0 && Privileged::syncAttentionBays();
+        } catch (\Throwable) {
+            // the lights are a nicety; never fail a mount over them
+        }
     }
 
     /** A filesystem went away (or is about to): unmount it if it's ours. */

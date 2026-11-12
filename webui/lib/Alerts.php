@@ -138,6 +138,7 @@ final class Alerts
         $cfg = Config::load();
         $smart = Privileged::smart();
         Privileged::syncSmartFailedBays($smart);
+        Privileged::syncAttentionBays($smart);
         $now = self::evaluate($cfg, Privileged::bays(), $smart, Privileged::pmu());
         $stateFile = VAR_DIR . '/alert-state.json';
         $prev = json_decode((string) @file_get_contents($stateFile), true) ?: [];

@@ -40,7 +40,7 @@ It needs about 25 MB with its dependencies (lighttpd, PHP). On a system running 
   - Restart and shut down.
 - **Logs:** the journal for the kit's services, SSH, Samba and the kernel.
 - **Alerts:** a timer runs every 5 minutes and mails a problem once when it starts and once when it clears. It covers a failing SMART check, bad sectors, hot disks or processor, a full filesystem, a degraded RAID array, a failed bay, failed services, a low backup battery, a sagging power input, and running on battery.
-  A disk that fails its SMART health check also gets its bay light blinking red: the check writes the bay to `/run/drobo-leds/failed-bays`. It only adds and removes the bays it marked itself, so a bay you list there by hand stays.
+  A disk that won't mount, or that has reallocated, pending or uncorrectable sectors, gets its bay light solid red (`/run/drobo-leds/attention-bays`), and the bay's page says why. A disk that fails its SMART health check also gets its bay light blinking red: the check writes the bay to `/run/drobo-leds/failed-bays`. It only adds and removes the bays it marked itself, so a bay you list there by hand stays.
 
 ## Install
 

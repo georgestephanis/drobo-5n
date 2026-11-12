@@ -4,15 +4,19 @@ Mapped on 2026-11-11 under Debian, by driving each line and watching the panel, 
 
 The faceplate's label gives Drobo's meanings: green = healthy, yellow = add a drive soon, blinking green/yellow = don't remove, red = add a drive now, blinking red = drive failed.
 
-The kit's `drobo-leds` uses its own meanings for the bay lights:
+The kit's `drobo-leds` uses its own meanings for the bay lights. They follow Drobo's where they can: green/yellow is "don't remove", and red is "do something".
 
 | Bay light | Meaning |
 |---|---|
-| Off | Empty bay |
-| Yellow | A disk is in the bay but the bay is switched off: safe to pull |
-| Green | The disk is in use: a filesystem on it is mounted, or md, LVM or dm-crypt holds it |
-| Green and yellow, alternating | Don't pull it yet (Drobo's own "don't remove"): the disk has power but nothing has it mounted. Use Safely remove first. It shows for: sharing off, a filesystem Linux can't read, unmounted for a check, or still spinning up |
-| Blinking red | The disk failed its SMART health check |
+| Off | Empty, or the bay is switched off: nothing holds the disk, so it's safe to pull. Trust this only while the power light is green: at boot, before `drobo-leds` starts, every bay is dark. |
+| Yellow | The disk has power but nothing has it mounted. Use Safely remove (or switch the bay off) before pulling it. |
+| Green | In use: a filesystem on it is mounted, or md, LVM or dm-crypt holds it. |
+| Green and red, alternating | In use, and a filesystem on it is at least 95% full (`FULL_PCT`). |
+| Green and yellow, alternating | Busy, don't remove: a program has the disk open (a filesystem check, `dd`, a SMART test), or an md array it's in is syncing. |
+| Red | Needs attention, with the reason in `/run/drobo-leds/attention-bays`. The dashboard marks a disk that won't mount and one with reallocated, pending or uncorrectable sectors. |
+| Blinking red | Failed: the disk failed its SMART health check (`/run/drobo-leds/failed-bays`). |
+
+`drobo-leds status` prints what each bay shows and why, and the dashboard shows the same reason on the bay's page.
 
 ## Summary
 

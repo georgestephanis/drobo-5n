@@ -122,13 +122,22 @@ function Tile({ label, value, sub, small }) {
 }
 
 const LIGHT_TEXT = {
-  off: 'Empty',
-  green: 'Disk powered and ready',
-  yellow: 'Disk present, bay powered off',
-  'red-blink': 'Marked as failed',
+  off: 'Empty or switched off',
+  yellow: 'Powered, not in use',
+  green: 'In use',
+  'green-red': 'In use, nearly full',
+  'green-yellow': 'Busy: don\'t remove',
+  red: 'Needs attention',
+  'red-blink': 'Failed',
 };
 
-const LIGHT_PILL = { green: 'ok', off: 'muted', yellow: 'warning', 'red-blink': 'critical' };
+const LIGHT_PILL = {
+  off: 'muted', yellow: 'muted', green: 'ok', 'green-red': 'warning', 'green-yellow': 'warning',
+  red: 'critical', 'red-blink': 'critical',
+};
+
+// The front panel's own wording for the light, e.g. "switched off: safe to pull"
+const lightWhy = (bay) => bay?.why ? bay.why.replace(/^sd[a-z]+ /, '') : null;
 
 function BayList({ bays, bySlot, smart, onSelect }) {
   const rows = [0, 1, 2, 3, 4].map((n) => ({ n, slot: `bay${n}`, bay: bays[n] }));
@@ -189,6 +198,7 @@ function BayDetail({ n, bay, disk, smart, unit, admin, reload, temps, onClose })
       ) : (
         <p className="hint">{bay?.present ? (bay.powered ? 'The bay is powered but Linux hasn\'t found a disk yet.' : 'There is a disk here, but the bay is powered off.') : 'No disk in this bay.'}</p>
       )}
+      {lightWhy(bay) && <p className="hint">Bay light: {lightWhy(bay)}.</p>}
       {admin && bay?.present && (
         <div className="row">
           <button onClick={toggle} disabled={act.busy}>{bay.powered ? 'Power off bay' : 'Power on bay'}</button>

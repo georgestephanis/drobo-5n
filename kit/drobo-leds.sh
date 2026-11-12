@@ -8,10 +8,17 @@
 #   gauge      PCA9555 0x21 on i2c-0 (no kernel driver), outputs 0-9, left to right: bits 0 4 1 5 2 6 3 7 8 9
 #
 # Meanings:
-#   bay       off = empty, yellow = disk present but bay unpowered (safe to pull),
-#             green = disk in use (a filesystem on it is mounted, or it's part of md/LVM/dm),
-#             green/yellow alternating = disk powered but not in use (Drobo's "don't remove"; use Safely remove),
-#             blinking red = disk listed in $FAILED_FILE (one bay number per line)
+#   bay       off = empty, or the bay is switched off: nothing holds the disk, safe to pull
+#                   (trust this only while the power light is green)
+#             yellow = disk powered but not in use (unmount it with Safely remove before pulling)
+#             green = disk in use (a filesystem on it is mounted, or it's part of md/LVM/dm)
+#             green/red alternating = in use but a filesystem on it is at least $FULL_PCT% full
+#             green/yellow alternating = busy, don't remove: a program has the disk open
+#                   (a check, dd, a SMART test) or an md array it's in is syncing
+#             red = needs attention, reason in $ATTENTION_FILE (lines "N reason"; the dashboard
+#                   writes its own: a disk that won't mount, early SMART warnings)
+#             blinking red = failed, bay listed in $FAILED_FILE (one bay number per line)
+#             Each bay's light and reason are written to $STATE_FILE; `drobo-leds status` prints them.
 #   power     green = running, yellow = starting or degraded, red = stopping / other
 #   activity  blinks while any disk reads or writes
 #   gauge     percent used of the bay disks' filesystems (summed), in tenths; all off with none mounted.
@@ -19,6 +26,9 @@
 #             md/dm volumes made only of them; a list of mount points counts those instead.
 GAUGE_PATHS=bays
 FAILED_FILE=/run/drobo-leds/failed-bays
+ATTENTION_FILE=/run/drobo-leds/attention-bays
+STATE_FILE=/run/drobo-leds/bays
+FULL_PCT=95       # a bay disk this full alternates green and red
 POLL=0.5          # activity poll, seconds
 SLOW_EVERY=10     # bays/power/gauge every SLOW_EVERY polls
 [ -r /etc/default/drobo-leds ] && . /etc/default/drobo-leds
@@ -37,7 +47,7 @@ stop_blink() {  # kill the blinker and wait for it, so its line is released befo
 }
 start_blink() { name=$1; shift; "$@" & echo $! > "/run/drobo-leds/$name.pid"; }
 
-bay_set() {  # bay_set N off|green|green-yellow|yellow|red|red-blink
+bay_set() {  # bay_set N off|green|green-red|green-yellow|yellow|red|red-blink
   n=$1 mode=$2
   eval "last=\$bay_last_$n"; [ "$last" = "$mode" ] && return
   eval "bay_last_$n=$mode"
@@ -48,6 +58,7 @@ bay_set() {  # bay_set N off|green|green-yellow|yellow|red|red-blink
     yellow) gpioset -t0 "bay$n-led-a=1" "bay$n-led-b=1" ;;
     red)    gpioset -t0 "bay$n-led-a=0" "bay$n-led-b=1" ;;
     red-blink) gpioset -t0 "bay$n-led-a=0"; start_blink "bay$n" gpioset -t 500ms,500ms "bay$n-led-b=1" ;;
+    green-red) start_blink "bay$n" gpioset -t 1s,1s "bay$n-led-a=1" "bay$n-led-b=0" ;;  # both lines toggle: green, red, green
     green-yellow) gpioset -t0 "bay$n-led-a=1"; start_blink "bay$n" gpioset -t 1s,1s "bay$n-led-b=1" ;;
   esac
 }
@@ -141,20 +152,52 @@ disk_in_use() {
   return 1
 }
 
+# busy_disks: disks (sdX) a program has open directly (fsck, dd, smartctl), or that are in an md array
+# that is syncing. Mounted filesystems don't show up here: they're "in use", not busy.
+busy_disks() {
+  {
+    find /proc/[0-9]*/fd -maxdepth 1 -lname '/dev/sd*' -printf '%l\n' 2>/dev/null
+    for md in /sys/block/md*; do
+      [ -e "$md/md/sync_action" ] || continue
+      [ "$(cat "$md/md/sync_action")" = idle ] && continue
+      ls "$md/slaves"
+    done
+  } | sed 's#^/dev/##; s/[0-9]*$//' | sort -u
+}
+
+# disk_full NAME: highest percent used of the filesystems mounted from the disk or its partitions
+disk_full() {
+  df -P 2>/dev/null | awk -v d="/dev/$1" 'index($1, d) == 1 && substr($1, length(d) + 1) ~ /^[0-9]*$/ {
+    p = $5; sub(/%/, "", p); if (p + 0 > m) m = p + 0 } END { print m + 0 }'
+}
+
 disk_io() { awk '$3 ~ /^(sd[a-z]+|nvme[0-9]+n[0-9]+)$/ { s += $6 + $10 } END { print s + 0 }' /proc/diskstats; }
 
 update_slow() {
   disks=$(bay_disks)
+  busy_now=$(busy_disks)
+  state=""
   for n in 0 1 2 3 4; do
-    if grep -qx "$n" "$FAILED_FILE" 2>/dev/null; then bay_set $n red-blink
-    elif [ "$(gpioget --numeric "bay$n-detect" 2>/dev/null)" != 0 ]; then bay_set $n off
-    elif [ "$(gpioget --numeric --as-is "bay$n-power" 2>/dev/null)" = 1 ]; then
-      d=$(echo "$disks" | awk -v n="$n" '$1 == n { print $2 }')
-      # powered but Linux hasn't found the disk yet (spinning up) counts as not in use
-      if [ -n "$d" ] && disk_in_use "$d"; then bay_set $n green; else bay_set $n green-yellow; fi
-    else bay_set $n yellow
+    d=$(echo "$disks" | awk -v n="$n" '$1 == n { print $2 }')
+    why=$(awk -v n="$n" '$1 == n { $1 = ""; sub(/^ /, ""); print; exit }' "$ATTENTION_FILE" 2>/dev/null)
+    if grep -qx "$n" "$FAILED_FILE" 2>/dev/null; then mode=red-blink why="marked as failed"
+    elif [ "$(gpioget --numeric "bay$n-detect" 2>/dev/null)" != 0 ]; then mode=off why="empty"
+    elif [ "$(gpioget --numeric --as-is "bay$n-power" 2>/dev/null)" != 1 ]; then mode=off why="switched off: safe to pull"
+    elif [ -n "$why" ]; then mode=red
+    elif [ -z "$d" ]; then mode=yellow why="powered, Linux hasn't found the disk yet"
+    # busy on two checks in a row, so a quick smartctl from the dashboard doesn't flicker it
+    elif echo "$busy_now" | grep -qx "$d" && echo "$busy_last" | grep -qx "$d"; then mode=green-yellow why="$d busy: don't remove"
+    elif disk_in_use "$d"; then
+      pct=$(disk_full "$d")
+      if [ "$pct" -ge "$FULL_PCT" ]; then mode=green-red why="$d in use, $pct% full"; else mode=green why="$d in use, $pct% full"; fi
+    else mode=yellow why="$d powered, not in use: Safely remove before pulling"
     fi
+    bay_set "$n" "$mode"
+    state="$state$n $mode $why
+"
   done
+  busy_last=$busy_now
+  printf '%s' "$state" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
   case $(systemctl is-system-running 2>/dev/null) in
     running) power_set green ;;
     starting|initializing|degraded) power_set yellow ;;
@@ -165,6 +208,11 @@ update_slow() {
 }
 
 # --- main ------------------------------------------------------------------
+if [ "$1" = status ]; then  # print each bay's light and why, as the running service last saw it
+  [ -r "$STATE_FILE" ] || { echo "drobo-leds isn't running (no $STATE_FILE)" >&2; exit 1; }
+  awk '{ n = $1; m = $2; $1 = $2 = ""; sub(/^ +/, ""); printf "bay %s  %-13s %s\n", n, m, $0 }' "$STATE_FILE"
+  exit 0
+fi
 shutdown() { act_set off; power_last=; power_set red; for n in 0 1 2 3 4; do stop_blink "bay$n"; done; exit 0; }
 trap shutdown TERM INT
 

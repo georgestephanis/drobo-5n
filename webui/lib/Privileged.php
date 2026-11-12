@@ -10,6 +10,8 @@ final class Privileged
 {
     private const PMU = '/usr/local/sbin/drobo-pmu';
     private const FAILED_BAYS = '/run/drobo-leds/failed-bays';
+    private const ATTENTION_BAYS = '/run/drobo-leds/attention-bays';
+    private const LED_STATE = '/run/drobo-leds/bays';
     private const PMU_TTL = 60;      // one full PMU read takes about 6 s, so cache it
     private const SMART_TTL = 120;
 
@@ -17,6 +19,13 @@ final class Privileged
     public static function bays(): array
     {
         $failed = array_map('trim', @file(self::FAILED_BAYS) ?: []);
+        $lights = [];  // what drobo-leds last showed, and why: "N mode reason"
+        foreach (@file(self::LED_STATE, FILE_IGNORE_NEW_LINES) ?: [] as $l) {
+            $p = explode(' ', $l, 3);
+            if (count($p) >= 2 && ctype_digit($p[0])) {
+                $lights[(int) $p[0]] = ['light' => $p[1], 'why' => $p[2] ?? ''];
+            }
+        }
         $bays = [];
         for ($n = 0; $n < 5; $n++) {
             $detect = Shell::out(['gpioget', '--numeric', "bay$n-detect"], 3);
@@ -27,6 +36,8 @@ final class Privileged
                 'powered' => $power === '1',
                 'failed' => in_array((string) $n, $failed, true),
                 'known' => $detect !== null,
+                'light' => $lights[$n]['light'] ?? null,
+                'why' => $lights[$n]['why'] ?? null,
             ];
         }
         return $bays;
@@ -69,6 +80,71 @@ final class Privileged
         }
         @mkdir(VAR_DIR, 0755, true);
         file_put_contents($mineFile, json_encode($want));
+        return $want;
+    }
+
+    /**
+     * Light a bay red (drobo-leds' "needs attention") for a disk that won't mount, or one with
+     * reallocated, pending or uncorrectable sectors. Lines are "N reason" in
+     * /run/drobo-leds/attention-bays; we only add and remove our own, as with failed-bays.
+     * Pass the SMART data from the alerts check; without it the last SMART reasons are kept.
+     */
+    public static function syncAttentionBays(?array $smart = null): array
+    {
+        $mineFile = VAR_DIR . '/attention-bays.json';
+        $prev = json_decode((string) @file_get_contents($mineFile), true) ?: [];
+        $prevMine = array_map('strval', array_keys($prev['all'] ?? []));
+        $smartWhy = $prev['smart'] ?? [];
+        if ($smart !== null) {
+            $smartWhy = [];
+            foreach (Hardware::disks() as $d) {
+                if (!preg_match('/^bay([0-4])$/', $d['slot'], $m)) {
+                    continue;
+                }
+                $s = $smart[$d['name']] ?? null;
+                if (!$s || !($s['available'] ?? false) || ($s['asleep'] ?? false)) {
+                    if (isset(($prev['smart'] ?? [])[$m[1]])) {
+                        $smartWhy[$m[1]] = $prev['smart'][$m[1]];  // asleep: keep what it had
+                    }
+                    continue;
+                }
+                $bad = [];
+                foreach (['reallocated', 'pending', 'uncorrectable'] as $k) {
+                    if (($s[$k] ?? 0) > 0) {
+                        $bad[] = "{$s[$k]} $k sectors";
+                    }
+                }
+                if ($bad) {
+                    $smartWhy[$m[1]] = 'SMART warning: ' . implode(', ', $bad);
+                }
+            }
+        }
+        $want = $smartWhy;
+        foreach (Sharing::state()['disks'] as $d) {
+            if ($d['error'] && preg_match('/^bay([0-4])$/', (string) $d['slot'], $m)) {
+                $want[$m[1]] = "won't mount: " . preg_replace('/\s+/', ' ', $d['error']);
+            }
+        }
+        ksort($want);
+
+        $keep = [];
+        foreach (array_filter(array_map('trim', @file(self::ATTENTION_BAYS) ?: []), 'strlen') as $l) {
+            if (!in_array(strtok($l, ' '), $prevMine, true)) {
+                $keep[] = $l;  // someone else's
+            }
+        }
+        $lines = $keep;
+        foreach ($want as $n => $why) {
+            $lines[] = "$n $why";
+        }
+        $text = $lines ? implode("\n", $lines) . "\n" : '';
+        if ($text !== (string) @file_get_contents(self::ATTENTION_BAYS)) {
+            @mkdir(dirname(self::ATTENTION_BAYS), 0755, true);
+            file_put_contents(self::ATTENTION_BAYS . '.tmp', $text);
+            rename(self::ATTENTION_BAYS . '.tmp', self::ATTENTION_BAYS);
+        }
+        @mkdir(VAR_DIR, 0755, true);
+        file_put_contents($mineFile, json_encode(['all' => (object) $want, 'smart' => (object) $smartWhy]));
         return $want;
     }
 

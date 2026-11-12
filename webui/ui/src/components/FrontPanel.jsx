@@ -1,8 +1,9 @@
 import React from 'react';
 
-// The bay light rules are the same as drobo-leds.sh, so the picture matches the real front panel.
+// drobo-leds writes what each bay light shows; without it (an older kit), the same basic rules.
 export function bayLight(b) {
   if (!b) return 'off';
+  if (b.light) return b.light;
   if (b.failed) return 'red-blink';
   if (!b.present) return 'off';
   return b.powered ? 'green' : 'yellow';

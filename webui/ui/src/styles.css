@@ -131,14 +131,18 @@ nav .dot { margin-left: auto; width: 9px; height: 9px; border-radius: 50%; }
 .fp-bay:hover rect:first-child, .fp-bay:focus rect:first-child { stroke: #5e9a2c; }
 .fp-label { fill: #4a4e54; font: 600 13px system-ui, sans-serif; }
 .led { fill: #0c0d0f; stroke: #3a3e44; stroke-width: 0.8; }
-.led.green, .led.yellow, .led.red, .led.red-blink, .led.blue { stroke: none; }
+.led.green, .led.yellow, .led.red, .led.red-blink, .led.green-yellow, .led.green-red, .led.blue { stroke: none; }
 .led.green { fill: #7cdc3c; }
 .led.yellow { fill: #ffc531; }
 .led.red, .led.red-blink { fill: #ff4a3d; }
 .led.red-blink { animation: blink 1s steps(1) infinite; }
+.led.green-yellow { fill: #7cdc3c; animation: alt-yellow 2s steps(1) infinite; }
+.led.green-red { fill: #7cdc3c; animation: alt-red 2s steps(1) infinite; }
 .led.blue { fill: #49a6ff; }
 .led.act { fill: #0c0d0f; }
 @keyframes blink { 50% { fill: #3a1512; } }
+@keyframes alt-yellow { 50% { fill: #ffc531; } }
+@keyframes alt-red { 50% { fill: #ff4a3d; } }
 
 /* capacity */
 .capacity-numbers { display: flex; gap: 28px; flex-wrap: wrap; margin-bottom: 12px; }
