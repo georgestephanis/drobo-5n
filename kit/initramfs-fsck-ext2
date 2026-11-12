@@ -1,0 +1,8 @@
+#!/bin/sh
+# /etc/initramfs-tools/hooks/drobo-fsck-ext2: put fsck.ext2 in the initrd next to e2fsck.
+# initramfs-tools only adds the checker for the running root's type (ext4 on the mSATA SSD), but the
+# rescue set reuses this initrd to boot the stick's ext2 root, and without fsck.ext2 that root is never checked.
+case "$1" in prereqs) echo ""; exit 0 ;; esac
+. /usr/share/initramfs-tools/hook-functions
+copy_exec /usr/sbin/e2fsck /usr/sbin
+ln -sf e2fsck "$DESTDIR/usr/sbin/fsck.ext2"

@@ -27,7 +27,7 @@ printf '%s\n' 'Dir::Cache::pkgcache "";' 'Dir::Cache::srcpkgcache "";' > /etc/ap
 rm -f /var/cache/apt/pkgcache.bin /var/cache/apt/srcpkgcache.bin
 
 echo "== tools"
-mkdir -p $LIB /etc/kernel/postinst.d /etc/initramfs/post-update.d
+mkdir -p $LIB /etc/kernel/postinst.d /etc/initramfs/post-update.d /etc/initramfs-tools/hooks
 install -m 644 "$here/stub.bin" "$here/drobo5n-fixups.dtsi" $LIB/
 install -m 755 "$here/mkdrobokernel" /usr/local/sbin/mkdrobokernel
 install -m 755 "$here/mkdrobodtb" /usr/local/sbin/mkdrobodtb
@@ -43,6 +43,7 @@ install -m 755 "$here/drobo-pmu-poweroff.sh" /usr/lib/systemd/system-shutdown/dr
 install -m 644 "$here/drobo-watchdog.conf" /etc/systemd/system.conf.d/drobo-watchdog.conf           # a hang resets the board
 install -m 755 "$here/postinst-hook" /etc/kernel/postinst.d/zz-drobo
 install -m 755 "$here/postinst-hook" /etc/initramfs/post-update.d/drobo
+install -m 755 "$here/initramfs-fsck-ext2" /etc/initramfs-tools/hooks/drobo-fsck-ext2
 install -m 644 "$here/drobo-fan.service" "$here/drobo-bays.service" "$here/drobo-leds.service" "$here/drobo-boot-ok.service" "$here/drobo-powerbtn.service" /etc/systemd/system/
 systemctl enable drobo-fan.service drobo-bays.service drobo-leds.service drobo-boot-ok.service drobo-powerbtn.service
 echo i2c-dev > /etc/modules-load.d/i2c-dev.conf                     # the capacity gauge is driven from user space

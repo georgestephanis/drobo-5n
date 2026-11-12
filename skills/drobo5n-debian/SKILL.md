@@ -52,21 +52,21 @@ Work through the README in order. Don't go on to the next step until its checkpo
 | 7. U-Boot | `printenv bootcmd amp_enable` shows `run dbsel` and `no`, **and still does after a `reset`** |
 | 8. First boot | SSH to `NAME.local`; `systemctl --failed` empty; `drobo-bays status` answers; `drobo-fan` journal shows a fan target |
 
-Then the optional parts, each in README section 8: root on the mSATA SSD (and `kit/uboot-ssd.txt`), the rescue button (`mkdrobokernel --rescue` and `kit/uboot-rescue.txt`, only after the SSD move), the `drobo-webui` dashboard, and Samba.
+Then the optional parts, each in README section 9 (Optional extras): root on the mSATA SSD (and `kit/uboot-ssd.txt`), the rescue button (`mkdrobokernel --rescue` and `kit/uboot-rescue.txt`, only after the SSD move), the `drobo-webui` dashboard, and Samba.
 
 ## Stop and ask the person
 
 - Before anything that erases or partitions a disk, name the device (`lsblk`) and wait for a yes.
 - Before every `saveenv`.
 - Before a step that needs a hand on the board: power, the pinhole button, unplugging, opening the case.
-- When output doesn't match the checkpoint. Don't improvise around a mismatch in U-Boot; ask, and look in README section 10 and `research/consoles-and-u-boot.md` first.
+- When output doesn't match the checkpoint. Don't improvise around a mismatch in U-Boot; ask, and look in README section 11 (Troubleshooting) and `research/consoles-and-u-boot.md` first.
 
 ## Maintenance and recovery (a board that already runs the kit)
 
 - **Kernel updates** need nothing special: `apt upgrade` runs `mkdrobokernel` from the kernel and initramfs hooks (twice per install; that's expected). The first boot of a new set is a trial; if it doesn't come up, U-Boot boots `prev` and `drobo-boot-ok` restores it. Check `journalctl -u drobo-boot-ok` a minute after boot.
-- **The board won't come up normally:** have the person hold the pinhole button (beside the power socket) with a paper clip while pressing power, until the power light turns red. That boots the rescue system from the stick (`drobo.rescue=1` in `/proc/cmdline`). The SSD root isn't mounted; mount it by UUID to repair it. Don't run `apt upgrade` in the rescue system.
+- **The board won't come up normally:** have the person hold the pinhole button (beside the power socket) with a paper clip while pressing power, until the power light turns red, 15–20 s after pressing power (it's yellow for a moment first). That boots the rescue system from the stick (`drobo.rescue=1` in `/proc/cmdline`). The SSD root isn't mounted; mount it by UUID to repair it. Don't run `apt upgrade` in the rescue system.
 - **From the U-Boot prompt:** `run dbpick dbprv dbboot` boots the previous set once; `run dbresc` boots the rescue system.
-- **Going back to Drobo OS:** README section 11 (write the stick image back, then restore `amp_enable yes` and `bootcmd amp_boot`).
+- **Going back to Drobo OS:** README section 12 (write the stick image back, then restore `amp_enable yes` and `bootcmd amp_boot`).
 
 ## Things that look broken but aren't
 

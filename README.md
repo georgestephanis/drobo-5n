@@ -11,7 +11,7 @@ How to replace Drobo OS on a Drobo 5N with plain Debian 13 that boots by itself,
 > **What you end up with.** Debian 13 (trixie, armhf, kernel `armmp-lpae`) on the Drobo's internal 1 GB eUSB stick. It boots by itself in about 2½ minutes (about 1 minute 20 with an mSATA SSD fitted), gets its address by DHCP, and answers SSH at `drobo5n.local`. All five bays work as ordinary SATA disks. The case fan follows the SoC and disk temperatures, and kernel updates rebuild the boot files on their own.
 
 > [!WARNING]
-> **Before you start.** This erases Drobo OS from the eUSB stick; step 5 makes a full backup first so you can go back. It doesn't touch the SPI flash (U-Boot) or the NOR flash. The only lasting changes outside the stick are a few U-Boot environment variables, all listed in step 7. You'll be opening the case and connecting a serial adapter. Keep a fan on the heatsink if the case is open. You do this at your own risk.
+> **Before you start.** This erases Drobo OS from the eUSB stick; step 5 makes a full backup first so you can go back. It doesn't touch the SPI flash (U-Boot) or the NOR flash. The only lasting changes outside the stick are a few U-Boot environment variables, listed in step 7 (and in section 9 for the optional SSD and rescue boot). You'll be opening the case and connecting a serial adapter. Keep a fan on the heatsink if the case is open. You do this at your own risk.
 
 For what we learned about the hardware, U-Boot, the power controller and the stock firmware, see [`research/`](research/).
 
@@ -27,10 +27,11 @@ If you'd like an AI agent to help you through it, [`skills/drobo5n-debian/SKILL.
 6. [Run the Drobo kit inside the new system](#6-run-the-drobo-kit-inside-the-new-system)
 7. [Make U-Boot boot Debian](#7-make-u-boot-boot-debian)
 8. [First boot and everyday use](#8-first-boot-and-everyday-use)
-9. [Known limitations](#9-known-limitations)
-10. [Troubleshooting](#10-troubleshooting)
-11. [Going back to Drobo OS](#11-going-back-to-drobo-os)
-12. [How it works](#12-how-it-works)
+9. [Optional extras](#9-optional-extras): root on an mSATA SSD, the rescue button, the web dashboard, file sharing
+10. [Known limitations](#10-known-limitations)
+11. [Troubleshooting](#11-troubleshooting)
+12. [Going back to Drobo OS](#12-going-back-to-drobo-os)
+13. [How it works](#13-how-it-works)
 
 ## 1. What you need
 
@@ -56,7 +57,7 @@ If you'd like an AI agent to help you through it, [`skills/drobo5n-debian/SKILL.
 | [`mkdrobodtb`](kit/mkdrobodtb), [`drobo5n-fixups.dtsi`](kit/drobo5n-fixups.dtsi) | the Drobo | Device tree fixups: drive-bay expanders, mSATA power, unused Ethernet ports off |
 | [`drobo-pmu.sh`](kit/drobo-pmu.sh), [`drobo-fand.sh`](kit/drobo-fand.sh), [`drobo-fan.service`](kit/drobo-fan.service) | the Drobo | Talk to the power-management chip; temperature-controlled fan |
 | [`drobo-bays.sh`](kit/drobo-bays.sh), [`drobo-bays.service`](kit/drobo-bays.service) | the Drobo | Power the bays that hold a disk at boot, a few seconds apart |
-| [`initramfs-modules`](kit/initramfs-modules) | the Drobo | The USB, SATA and ext4 drivers the small initrd needs |
+| [`initramfs-modules`](kit/initramfs-modules), [`initramfs-fsck-ext2`](kit/initramfs-fsck-ext2) | the Drobo | The USB, SATA and ext4 drivers the small initrd needs, and `fsck.ext2` for the rescue boot |
 
 ## 2. Get a console on U-Boot
 
@@ -214,7 +215,7 @@ reset
 
 The second half of that list (also in [`kit/uboot-fallback.txt`](kit/uboot-fallback.txt)) is the fallback. `dbsel` lights the power LED yellow, then boots the current set in `/boot/drobo`. If any file fails to load, it boots `/boot/drobo/prev` instead. When `mkdrobokernel` installs a new set, it leaves a flag file, `/boot/drobo/trial`, a tiny U-Boot script that sets `dbtrialid`. U-Boot saves `dbtry=<that id>` and tries the new set once. If the flag is still there on the next boot, that try didn't come up (with `panic=10` a failed boot resets the board), so U-Boot boots `prev`. Paste the lines exactly: this U-Boot's `test` drops empty quoted strings, which is why the comparisons use `"x$dbtry"`.
 
-From now on the Drobo boots Debian by itself. U-Boot reads about 20 MB from the stick (around 80 seconds; it's slow), unpacks the kernel pieces, and jumps. Debian is on SSH about 2½ minutes after power-on. With an mSATA SSD set up as in section 8, U-Boot reads the same files over SATA in about a second, and SSH is up in about 80 seconds.
+From now on the Drobo boots Debian by itself. U-Boot reads about 20 MB from the stick (around 80 seconds; it's slow), unpacks the kernel pieces, and jumps. Debian is on SSH about 2½ minutes after power-on. With an mSATA SSD set up as in section 9, U-Boot reads the same files over SATA in about a second, and SSH is up in about 80 seconds.
 
 ## 8. First boot and everyday use
 
@@ -228,60 +229,103 @@ cat /sys/class/hwmon/hwmon*/temp1_input  # SoC (and disk) temperatures, millideg
 
 - **Drive bays.** Bays are numbered 0 (top) to 4 (bottom). At boot, `drobo-bays` powers every bay that holds a disk, 4 s apart. The disks then appear as ordinary SATA disks (`/dev/sdb`…). Use them with whatever you like: ext4, mdadm, mergerfs and SnapRAID, or OpenMediaVault. Drobo's BeyondRAID disk packs are not readable. `sudo drobo-bays on` rescans after you insert a disk; `off` powers all bays down.
 - **Fan.** `drobo-fand` sets the speed (01–31) from the hottest sensor, resent every 30 s. The power controller winds the speed down by itself if nobody keeps setting it. It never goes below 16, because the stock fan's bearing can stall at low speed. Tune it in `/etc/default/drobo-fan`, for example `FLOOR=12 SOC_HI=70`. If the fan doesn't start after a cold boot, give it a nudge, or replace it.
-- **Kernel updates.** After `apt upgrade` installs a kernel or rebuilds an initrd, the hook rebuilds `/boot/drobo`. Each set's DTB carries an id (`/chosen/drobo,set-id`), the root by UUID, `panic=10` and `fsck.repair=yes`. A minute after boot, `drobo-boot-ok` checks which set booted. If it was the current one, it records its checksums and clears the trial flag; `mkdrobokernel` only moves a set into `prev` after that, so `prev` is always a set that booted (Debian runs the hook twice per install). If U-Boot fell back to `prev` after a failed trial, it moves the broken set to `/boot/drobo/failed`, copies `prev` back as current, and logs a warning (`journalctl -u drobo-boot-ok`). `mkdrobokernel` refuses to build with less than 50 MB free. All of this was tested on 11 Nov, including a set with a wrong root UUID: it panicked, reset, and came back on `prev` with nobody at the console. On 12 Nov a real `apt-get install --reinstall` of the kernel package ran the hook twice (the second run replaced the never-booted set and left `prev` alone), and the trial boot from the SSD came up and was marked good.
+- **Kernel updates.** Nothing to do by hand: `apt upgrade` works as usual.
+  - When apt installs a kernel or rebuilds an initrd, a hook runs `mkdrobokernel`, which rebuilds `/boot/drobo`. Debian runs it twice per install; that's expected. It refuses to build with less than 50 MB free.
+  - Each set's DTB carries an id (`/chosen/drobo,set-id`), the root by UUID, `panic=10` and `fsck.repair=yes`.
+  - The next boot of a new set is a **trial**. A minute after boot, `drobo-boot-ok` checks which set came up. If it was the new one, it records it as good. Only a set that has booted is ever moved into `prev`.
+  - If the trial didn't come up, U-Boot boots `prev` instead, and `drobo-boot-ok` moves the broken set to `/boot/drobo/failed`, puts `prev` back as current, and logs a warning (`journalctl -u drobo-boot-ok`).
+  - Tested: a set with a wrong root UUID panicked, reset, and came back on `prev` with nobody at the console (11 Nov); a real `apt-get install --reinstall` of the kernel went through both hook runs and its trial boot (12 Nov).
 - **Watchdog.** systemd keeps the SoC watchdog running (`RuntimeWatchdogSec=60s`, from `drobo-watchdog.conf`). If the system hangs for a minute, the board resets. A watchdog reset was tested and comes back through U-Boot as normal.
 - **Power button.** A short press on the back does a clean shutdown: the power LED turns red, Linux shuts down, and the power goes off. `drobo-powerbtn` sends the power controller "CPU is up" (`K`) at boot and runs `poweroff` when it raises the power-down request (SoC GPIO 40). `sudo poweroff` also really powers off: the last shutdown step sends the controller `S`. Press the button again to power on. A power cut does the same thing: the backup battery holds the board up long enough for a clean shutdown (3.5 s measured), and the journal says "power failed, running on battery" instead of "power button pressed".
-- **Root and boot files on the mSATA SSD (recommended).** The 1 GB stick is tight, wears out, and is slow: U-Boot needs about 80 s to read 20 MB from it. U-Boot can read the SSD over SATA in about a second, but its ext2 driver can't read ext4 (it **hangs** on an ext4 partition), so the SSD gets two partitions: ext4 for root, and a small ext2 `drobo-boot` partition at the end that holds a copy of `/boot/drobo`. The stick keeps the master copy at `/boot` and stays the fallback: U-Boot uses the stick whenever the SSD's copy is missing. The old root stays on the stick too, and becomes the rescue system below. With an SSD in the slot (power off first; it shows up as `sda`, and the stick moves to `sdb`):
 
-  ```sh
-  lsblk                                                               # make sure sda is the SSD
-  SZ=$(( $(sudo blockdev --getsz /dev/sda) - 2048 - 2097152 - 4096 ))     # all but ~1 GiB, in sectors
-  printf 'label: gpt\n,%s,L,\n,,L,\n' $SZ | sudo sfdisk /dev/sda   # root, then a 1 GiB boot partition at the end
-  sudo mkfs.ext4 -L drobo-root /dev/sda1
-  sudo mkfs.ext2 -b 4096 -I 256 -L drobo-boot /dev/sda2               # plain ext2, the only thing U-Boot reads
-  sudo mkdir -p /mnt/newroot && sudo mount /dev/sda1 /mnt/newroot
-  sudo sh -c 'tar -C / --one-file-system --xattrs --acls -cpf - . | tar -C /mnt/newroot --xattrs --acls -xpf -'
-  sudo mv /mnt/newroot/boot /mnt/newroot/boot.copy-from-stick && sudo mkdir /mnt/newroot/boot /mnt/newroot/media/eusb /mnt/newroot/media/sdboot
-  NEW=$(sudo blkid -s UUID -o value /dev/sda1); STICK=$(findmnt -no UUID /)
-  printf '%s\n' "UUID=$NEW / ext4 noatime,errors=remount-ro 0 1" "UUID=$STICK /media/eusb ext2 noatime 0 2" \
-    "/media/eusb/boot /boot none bind 0 0" "LABEL=drobo-boot /media/sdboot ext2 noatime,nofail 0 2" | sudo tee /mnt/newroot/etc/fstab
-  sudo umount /mnt/newroot
-  sudo ROOT_UUID=$NEW ROOT_FSTYPE=ext4 mkdrobokernel                   # a trial set with root on the SSD; also copies it to sda2
-  sudo reboot
-  ```
+## 9. Optional extras
 
-  `drobo-boot-sync` (run by `mkdrobokernel` and `drobo-boot-ok`) keeps the SSD's copy in step with the stick. It builds the new copy beside the old one and swaps it in with two renames, so U-Boot only ever sees a complete set or none. To have U-Boot use it, add the lines in [`kit/uboot-ssd.txt`](kit/uboot-ssd.txt) at the U-Boot prompt and `saveenv`. They switch on the mSATA power (SoC GPIO 66: U-Boot's `gpio s 66` doesn't make it an output, so it writes GPIO bank 2's output and output-enable registers directly, `0xd0018180` = 5 and `0xd0018184` = 2; check with `md.l d0018180 2` that your board reads `1` and `6` there first), run `ide reset`, and point every load at `ide 1:2` if `/boot/drobo/VERSION` is there, otherwise at the stick. If no set on the SSD loads, it tries the stick. Never point `ext2load` or `ext2ls` at the ext4 partition (`ide 1:1`): this U-Boot hangs until the power is cut.
+None of these is needed to run the box. Moving the root to an mSATA SSD is the one worth doing first: it makes the boot twice as fast and spares the stick, and the rescue button builds on it.
 
-  After the reboot, `findmnt /` should show `/dev/sda1`, `findmnt /boot` should show `/dev/sdb1[/boot]`, and the console should print `DROBO: boot files from the SSD`. Tested on 11 Nov with a 64 GB mSATA SSD: reboot to SSH went from 154 s to 79 s. Hiding the SSD's copy made it fall back to the stick (157 s), and the next `drobo-boot-ok` rebuilt the copy. A new set went through its trial boot from the SSD. If you stay on the stick instead: no swap, `noatime` (the installer's default), and consider `Storage=volatile` in `/etc/systemd/journald.conf`.
+### Root and boot files on the mSATA SSD (recommended)
 
-- **Rescue system (pinhole button).** The small button in the hole beside the power socket (SoC GPIO 65, active-low) can pick a rescue boot. Hold it with a straightened paper clip while you press the power button, and keep holding until the power light turns **red** instead of yellow, about 5 s. U-Boot then boots `/boot/drobo/rescue` from the stick: the stick's own Debian root, with no files read from the SSD, so a broken SSD root, a bad config or a bad kernel can't get in the way. It's on SSH at the usual name about 2½ minutes later, and its login banner says it's the rescue system; mount the SSD root from there to repair it. Without the button, the boot is as before.
+The 1 GB stick is tight, wears out, and is slow: U-Boot needs about 80 s to read 20 MB from it. U-Boot can read the SSD over SATA in about a second, but its ext2 driver can't read ext4 (it **hangs** on an ext4 partition), so the SSD gets two partitions: ext4 for root, and a small ext2 `drobo-boot` partition at the end that holds a copy of `/boot/drobo`. The stick keeps the master copy at `/boot` and stays the fallback: U-Boot uses the stick whenever the SSD's copy is missing. The old root stays on the stick too, and becomes the rescue system below. With an SSD in the slot (power off first; it shows up as `sda`, and the stick moves to `sdb`):
 
-  Set it up once the root is on the SSD. Build the rescue set from the kernel the stick root has modules for, then add the lines in [`kit/uboot-rescue.txt`](kit/uboot-rescue.txt) at the U-Boot prompt (they end with `saveenv`):
+```sh
+lsblk                                                               # make sure sda is the SSD
+SZ=$(( $(sudo blockdev --getsz /dev/sda) - 2048 - 2097152 - 4096 ))     # all but ~1 GiB, in sectors
+printf 'label: gpt\n,%s,L,\n,,L,\n' $SZ | sudo sfdisk /dev/sda   # root, then a 1 GiB boot partition at the end
+sudo mkfs.ext4 -L drobo-root /dev/sda1
+sudo mkfs.ext2 -b 4096 -I 256 -L drobo-boot /dev/sda2               # plain ext2, the only thing U-Boot reads
+sudo mkdir -p /mnt/newroot && sudo mount /dev/sda1 /mnt/newroot
+sudo sh -c 'tar -C / --one-file-system --xattrs --acls -cpf - . | tar -C /mnt/newroot --xattrs --acls -xpf -'
+sudo mv /mnt/newroot/boot /mnt/newroot/boot.copy-from-stick && sudo mkdir /mnt/newroot/boot /mnt/newroot/media/eusb /mnt/newroot/media/sdboot
+NEW=$(sudo blkid -s UUID -o value /dev/sda1); STICK=$(findmnt -no UUID /)
+printf '%s\n' "UUID=$NEW / ext4 noatime,errors=remount-ro 0 1" "UUID=$STICK /media/eusb ext2 noatime 0 2" \
+  "/media/eusb/boot /boot none bind 0 0" "LABEL=drobo-boot /media/sdboot ext2 noatime,nofail 0 2" | sudo tee /mnt/newroot/etc/fstab
+sudo umount /mnt/newroot
+sudo ROOT_UUID=$NEW ROOT_FSTYPE=ext4 mkdrobokernel                   # a trial set with root on the SSD; also copies it to sda2
+sudo reboot
+```
 
-  ```sh
-  sudo mkdrobokernel --rescue          # writes /boot/drobo/rescue, root = the stick (UUID of /media/eusb)
-  ```
+Then have U-Boot read the boot files from the SSD:
 
-  The rescue set is never replaced by kernel updates, and in the rescue system `mkdrobokernel` refuses to rebuild the main set (it would point it at the stick). `drobo-boot-ok` doesn't recognise the rescue set's id, so it changes nothing. This U-Boot has no `setexpr` and `gpio r` always succeeds, so `dbbtn` reads GPIO bank 2's input register (`0xd0018190`) with `itest` and treats any value with bit 1 clear (0, 1, 4 or 5) as pressed; it reads 3 at rest. Tested on 12 Nov with `run dbresc` from the prompt, and with a normal boot afterwards.
+1. At the U-Boot prompt, first check that `md.l d0018180 2` reads `1` and `6`. Then type the lines in [`kit/uboot-ssd.txt`](kit/uboot-ssd.txt) and `saveenv`.
+2. Reboot and check: `findmnt /` shows `/dev/sda1`, `findmnt /boot` shows `/dev/sdb1[/boot]`, and the console prints `DROBO: boot files from the SSD`.
 
-- **Web dashboard (optional).** [`webui/`](webui/) is a separate package, `drobo-webui`, with a browser dashboard in the spirit of Drobo Dashboard. It covers bays and the front panel, capacity, SMART, temperatures and the fan, network and services, logs, and e-mail alerts. It also has settings for the device name, the fan curve, the capacity lights, bay power, HTTPS with a self-signed certificate, disk sleep, the SMART self-test schedule, software updates, and restart or shut down. It takes about 25 MB with lighttpd and PHP, and nothing else in the kit needs it, so skip it on a stick-only install. Download it from [the webui-v0.3.0 release](https://github.com/georgestephanis/drobo-5n/releases/tag/webui-v0.3.0), and see [`webui/README.md`](webui/README.md).
+> [!CAUTION]
+> Never point `ext2load` or `ext2ls` at the ext4 root partition (`ide 1:1`). This U-Boot hangs until the power is cut.
 
-  ![drobo-webui status page](webui/screenshots/status.png)
+How it works: `drobo-boot-sync`, run by `mkdrobokernel` and `drobo-boot-ok`, keeps the SSD's copy in step with the stick. It builds the new copy beside the old one and swaps it in with two renames, so U-Boot only ever sees a complete set or none. The U-Boot lines switch on the mSATA power (SoC GPIO 66; `gpio s 66` doesn't make it an output, so they write GPIO bank 2's output and output-enable registers directly, `0xd0018180` = 5 and `0xd0018184` = 2), run `ide reset`, and load from `ide 1:2` if `/boot/drobo/VERSION` is there, otherwise from the stick. If no set on the SSD loads, they try the stick.
 
-- **File sharing (SMB).** Samba works as on any Debian box. [`kit/smb.conf`](kit/smb.conf) is a starting point: SMB2 and newer only, no guest access, the macOS `fruit` options, and one share, `Drobo`, at `/srv/drobo`. Point `path` at your bay disks once they're mounted. `wsdd2` makes the Drobo show up under Network in Windows; macOS finds it through Avahi, which Debian already runs.
+Tested on 11 Nov with a 64 GB mSATA SSD: reboot to SSH went from 154 s to 79 s. Hiding the SSD's copy made it fall back to the stick (157 s), and the next `drobo-boot-ok` rebuilt the copy.
 
-  ```sh
-  sudo apt install --no-install-recommends samba wsdd2       # about 75 MB
-  sudo cp /etc/samba/smb.conf /etc/samba/smb.conf.debian-orig
-  sudo cp smb.conf /etc/samba/smb.conf && testparm -s
-  sudo install -d -o $USER -g $USER -m 775 /srv/drobo
-  sudo smbpasswd -a $USER                                    # a separate password, just for SMB
-  sudo systemctl restart smbd nmbd
-  ```
+If you stay on the stick instead: no swap, `noatime` (the installer's default), and consider `Storage=volatile` in `/etc/systemd/journald.conf`.
 
-  Then connect from a Mac with `smb://drobo5n.local/Drobo`. Tested on 11 Nov from macOS: it showed up in Finder by itself, negotiated SMB 3.1.1 with signing, and writing, renaming and moving files all worked.
+### Rescue system (pinhole button)
 
-## 9. Known limitations
+A rescue boot for when the normal system won't come up. It boots the old Debian root on the internal stick, and reads nothing from the SSD, so a broken SSD root, a bad config or a bad kernel can't get in the way.
+
+**To use it:** hold the small button in the hole beside the power socket with a straightened paper clip, press the power button, and keep holding until the power light turns **red**. That takes 15–20 s; the light is yellow for a moment first. About 2½ minutes later it's on SSH at the usual name, and the login banner says it's the rescue system. Mount the SSD root from there to repair it, then reboot without the button.
+
+**To set it up** (once the root is on the SSD):
+
+1. On an install from before 12 Nov only, add the fsck hook from the kit. The initrd only carries the checker for the main root's type (ext4), and without this the rescue boot can't check the stick's ext2 root:
+   ```sh
+   sudo install -m 755 initramfs-fsck-ext2 /etc/initramfs-tools/hooks/drobo-fsck-ext2
+   sudo update-initramfs -u
+   ```
+2. Build the rescue set. It goes in `/boot/drobo/rescue`, with root on the stick:
+   ```sh
+   sudo mkdrobokernel --rescue
+   ```
+3. At the U-Boot prompt, type the lines in [`kit/uboot-rescue.txt`](kit/uboot-rescue.txt). They end with `saveenv`.
+
+How it works:
+- The button is SoC GPIO 65, active-low. This U-Boot has no `setexpr`, and `gpio r` always succeeds, so `dbbtn` reads GPIO bank 2's input register (`0xd0018190`) with `itest`. It reads 3 at rest; any value with bit 1 clear (0, 1, 4 or 5) means pressed.
+- The rescue set is built from the kernel the stick root has modules for, and kernel updates never replace it. Its command line adds `drobo.rescue=1`.
+- In the rescue system, `mkdrobokernel` refuses to rebuild the main set (it would point it at the stick), and `drobo-boot-ok` doesn't recognise the rescue set's id, so it changes nothing.
+- If the rescue files don't load, the normal boot carries on.
+
+Tested on 12 Nov: holding the button from a cold power-on booted the rescue system, stock U-Boot did nothing else with the button (no recovery, no update), and a normal boot afterwards still came from the SSD.
+
+### Web dashboard
+
+[`webui/`](webui/) is a separate package, `drobo-webui`, with a browser dashboard in the spirit of Drobo Dashboard. It covers bays and the front panel, capacity, SMART, temperatures and the fan, network and services, logs, and e-mail alerts. It also has settings for the device name, the fan curve, the capacity lights, bay power, HTTPS with a self-signed certificate, disk sleep, the SMART self-test schedule, software updates, and restart or shut down. It takes about 25 MB with lighttpd and PHP, and nothing else in the kit needs it, so skip it on a stick-only install. Download it from [the webui-v0.3.0 release](https://github.com/georgestephanis/drobo-5n/releases/tag/webui-v0.3.0), and see [`webui/README.md`](webui/README.md).
+
+![drobo-webui status page](webui/screenshots/status.png)
+
+### File sharing (SMB)
+
+Samba works as on any Debian box. [`kit/smb.conf`](kit/smb.conf) is a starting point: SMB2 and newer only, no guest access, the macOS `fruit` options, and one share, `Drobo`, at `/srv/drobo`. Point `path` at your bay disks once they're mounted. `wsdd2` makes the Drobo show up under Network in Windows; macOS finds it through Avahi, which Debian already runs.
+
+```sh
+sudo apt install --no-install-recommends samba wsdd2       # about 75 MB
+sudo cp /etc/samba/smb.conf /etc/samba/smb.conf.debian-orig
+sudo cp smb.conf /etc/samba/smb.conf && testparm -s
+sudo install -d -o $USER -g $USER -m 775 /srv/drobo
+sudo smbpasswd -a $USER                                    # a separate password, just for SMB
+sudo systemctl restart smbd nmbd
+```
+
+Then connect from a Mac with `smb://drobo5n.local/Drobo`. Tested on 11 Nov from macOS: it showed up in Finder by itself, negotiated SMB 3.1.1 with signing, and writing, renaming and moving files all worked.
+
+## 10. Known limitations
 
 - **Without `drobo-powerbtn` running** (for example in the installer, or before the service starts), the power controller treats a press of the power button as "nothing is running" and cuts power at once, with no shutdown.
 - **The first 16 MB of RAM** are left unused, because writes below 16 MB hang this board early in boot. That leaves 1.98 GB visible.
@@ -289,7 +333,7 @@ cat /sys/class/hwmon/hwmon*/temp1_input  # SoC (and disk) temperatures, millideg
 - **Boot from the stick is slow**, about 2½ minutes, almost all of it U-Boot reading the stick over USB. With the mSATA boot partition it's about 80 seconds.
 - **The mSATA slot** is powered from boot (SoC GPIO 66, held high by the device tree). It's the SoC's second SATA port, `ata2`: a 64 GB mSATA SSD came up there at 3 Gbps on 11 Nov and took `sda`, which is why root is found by UUID. It isn't hot-swap: power off first.
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 | Symptom | Cause and fix |
 |---|---|
@@ -299,16 +343,16 @@ cat /sys/class/hwmon/hwmon*/temp1_input  # SoC (and disk) temperatures, millideg
 | `inflate() returned -5` | A kernel piece is too big for this U-Boot's 8 MB unpack limit. `mkdrobokernel` splits at 7 MiB, so rerun it. |
 | Boots, but can't find root | The DTB names root by UUID (`fdtget /boot/drobo/drobo5n.dtb /chosen bootargs`); rerun `mkdrobokernel` after changing the root filesystem. Or, from a TFTP boot of the installer, chroot and set `MODULES=most` in `/etc/initramfs-tools/initramfs.conf`, then `update-initramfs -u`. |
 | A different IP every boot | The MAC isn't in the DTB. Check with `fdtget /usr/local/lib/drobo/drobo5n-base.dtb /soc/internal-regs/ethernet@70000 local-mac-address`. |
-| Need the old kernel | In U-Boot, `run dbusb dbprv dbboot` boots `/boot/drobo/prev` once (with the SSD lines from section 8: `run dbpick dbprv dbboot`). A new set that fails to boot falls back to it by itself. |
-| The normal system won't come up | Hold the pinhole button at power-on for the rescue system (section 8), or at the U-Boot prompt `run dbresc`. |
+| Need the old kernel | In U-Boot, `run dbusb dbprv dbboot` boots `/boot/drobo/prev` once (with the SSD lines from section 9: `run dbpick dbprv dbboot`). A new set that fails to boot falls back to it by itself. |
+| The normal system won't come up | Hold the pinhole button at power-on for the rescue system (section 9), or at the U-Boot prompt `run dbresc`. |
 | Power LED stays red, board stays on after `poweroff` | The shutdown hook couldn't reach the power controller. Check `/usr/lib/systemd/system-shutdown/drobo-pmu-poweroff` exists, and hold the button for 6 s. |
 
-## 11. Going back to Drobo OS
+## 12. Going back to Drobo OS
 
 1. Boot the installer once more over TFTP (step 4), open a shell, and write your backup back: `nc -l -p 9000 | dd of=/dev/sda bs=1M` in the installer, then `nc <drobo-ip> 9000 < eusb-drobo-os.img` on your computer. Run `sync` before rebooting.
 2. In U-Boot: `setenv amp_enable yes`, `setenv bootcmd amp_boot`, `saveenv`, `reset`.
 
-## 12. How it works
+## 13. How it works
 
 For the curious. The details are in the [write-up](https://celestial-star.space.fast/).
 
