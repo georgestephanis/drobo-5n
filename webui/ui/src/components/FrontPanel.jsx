@@ -21,7 +21,8 @@ const TOP = 26;
 
 /**
  * Front of the Drobo 5N: five bays top (0) to bottom (4), each with its light on the right,
- * then the row of ten blue capacity lights, with the power and activity lights at the far end.
+ * then the bottom row: the power light on the left, the ten blue capacity lights, and the
+ * activity light on the right.
  */
 export default function FrontPanel({ bays = [], gaugeLit = 0, power = 'green', selected, onSelect }) {
   const gaugeY = TOP + 5 * (BAY_H + BAY_GAP) + 14;
@@ -63,12 +64,12 @@ export default function FrontPanel({ bays = [], gaugeLit = 0, power = 'green', s
           </g>
         );
       })}
+      <circle cx="30" cy={gaugeY + 2.5} r="5" className={`led ${power}`} filter="url(#fp-glow)" />
       {Array.from({ length: 10 }, (_, i) => (
-        <rect key={i} x={30 + i * 20} y={gaugeY} width="12" height="5" rx="1.5"
+        <rect key={i} x={64 + i * 22} y={gaugeY} width="14" height="5" rx="1.5"
           className={`led gauge ${i < gaugeLit ? 'blue' : 'off'}`} filter={i < gaugeLit ? 'url(#fp-glow)' : undefined} />
       ))}
-      <circle cx={W - 54} cy={gaugeY + 2.5} r="4" className="led act" />
-      <circle cx={W - 30} cy={gaugeY + 2.5} r="5" className={`led ${power}`} filter="url(#fp-glow)" />
+      <circle cx={W - 30} cy={gaugeY + 2.5} r="4" className="led act" />
     </svg>
   );
 }

@@ -8,7 +8,7 @@ declare(strict_types=1);
 
 namespace DroboWebui;
 
-const VERSION = '0.1.0';
+const VERSION = '0.1.1';
 
 define('DroboWebui\ETC_DIR', getenv('DROBO_WEBUI_ETC') ?: '/etc/drobo-webui');
 define('DroboWebui\VAR_DIR', getenv('DROBO_WEBUI_VAR') ?: '/var/lib/drobo-webui');
