@@ -322,18 +322,36 @@ final class Sharing
         return true;
     }
 
+    /**
+     * Unmount one of our disks. If it's busy, first disconnect the Samba clients of its share (a Mac
+     * reconnects by itself next time the share is opened) and try again; only a program on the Drobo
+     * itself, or a lost disk ($lazy), is left.
+     */
     private static function unmount(string $mnt, bool $lazy = false): void
     {
         [$code, , $err] = Shell::run(['umount', $mnt], null, 60);
+        for ($try = 0; $code !== 0 && str_contains($err, 'busy') && $try < 5; $try++) {
+            self::closeShare(basename($mnt));
+            usleep(700000);
+            [$code, , $err] = Shell::run(['umount', $mnt], null, 60);
+        }
         if ($code !== 0) {
             if (!$lazy) {
                 throw new RuntimeException(str_contains($err, 'busy')
-                    ? 'The disk is in use (a file is open on it, maybe over the network). Close it and try again.'
+                    ? 'The disk is in use by a program on the Drobo itself. Stop it and try again.'
                     : 'umount failed: ' . trim($err));
             }
             Shell::run(['umount', '-l', $mnt], null, 30);
         }
         @rmdir($mnt);
+    }
+
+    /** Disconnect everyone from one Samba share. */
+    private static function closeShare(string $name): void
+    {
+        if (Shell::out(['systemctl', 'is-active', 'smbd.service']) === 'active') {
+            Shell::run(['smbcontrol', 'smbd', 'close-share', $name], null, 15);
+        }
     }
 
     /** Mount (sharing on) or unmount (off) everything, and rewrite the Samba shares. */
@@ -384,16 +402,26 @@ final class Sharing
                 return;
             }
             $dev = self::devOf($uuid);
-            $target = self::ROOT . '/' . $s['disks'][$uuid]['name'];
+            $name = $s['disks'][$uuid]['name'];
+            $target = self::ROOT . '/' . $name;
             $wasMounted = $dev !== null && self::mountedAnywhere($dev) === $target;
-            if ($wasMounted) {
-                self::unmount($target);   // remount isn't enough: a read-only mount skipped the journal
-            }
             $s['disks'][$uuid]['writable'] = $on;
             if ($wasMounted) {
-                self::mountRec($s, $uuid, $dev);
+                // Switch in place where we can, so people connected to the share aren't thrown off.
+                // Not when allowing changes on ext3/4, XFS or Btrfs: their read-only mount skipped
+                // the journal, and only a fresh mount replays it.
+                $fresh = $on && !in_array($s['disks'][$uuid]['fstype'], self::FOREIGN_FS, true)
+                    && in_array($s['disks'][$uuid]['fstype'], ['ext3', 'ext4', 'xfs', 'btrfs'], true);
+                $code = 1;
+                if (!$fresh) {
+                    [$code] = Shell::run(['mount', '-o', 'remount,' . ($on ? 'rw' : 'ro'), $target], null, 60);
+                }
+                if ($code !== 0) {
+                    self::unmount($target);
+                    self::mountRec($s, $uuid, $dev);
+                }
             }
-            self::writeSamba($s);
+            self::writeSamba($s);   // the share's "read only" changed, so its clients are reconnected
         });
     }
 
@@ -570,12 +598,33 @@ final class Sharing
                 $txt .= "   vfs objects = catia\n   ea support = no\n";
             }
         }
+        $old = self::stanzas((string) @file_get_contents(self::SHARES_CONF));
         file_put_contents(self::SHARES_CONF . '.new', $txt);
         chmod(self::SHARES_CONF . '.new', 0644);
         rename(self::SHARES_CONF . '.new', self::SHARES_CONF);
         if (Shell::out(['systemctl', 'is-active', 'smbd.service']) === 'active') {
             Shell::run(['smbcontrol', 'smbd', 'reload-config'], null, 15);
+            // Samba checks access when a client connects, not afterwards: a share that went away or
+            // changed (who may use it, read-only) disconnects its clients, so they reconnect under the new rules.
+            $new = self::stanzas($txt);
+            foreach ($old as $name => $body) {
+                if (($new[$name] ?? null) !== $body) {
+                    Shell::run(['smbcontrol', 'smbd', 'close-share', $name], null, 15);
+                }
+            }
         }
+    }
+
+    /** [share name => its lines] from our shares file. */
+    private static function stanzas(string $txt): array
+    {
+        $out = [];
+        foreach (preg_split('/^(?=\[)/m', $txt) as $chunk) {
+            if (preg_match('/^\[([^\]]+)\]/', $chunk, $m)) {
+                $out[$m[1]] = trim($chunk);
+            }
+        }
+        return $out;
     }
 
     /** Rewrite the shares after a change that isn't a disk event. */
