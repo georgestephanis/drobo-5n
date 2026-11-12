@@ -39,6 +39,7 @@ If you'd like an AI agent to help you through it, [`skills/drobo5n-debian/SKILL.
 - A **3.3 V** USB serial adapter (not 5 V) and jumper wires. 115200 baud, 8N1.
 - A computer on the same wired LAN, with Python 3 and `dtc`/`fdtput` (macOS: `brew install dtc`; Debian/Ubuntu: `apt install device-tree-compiler`). A terminal program for the serial port (`screen`, `picocom`, `minicom`…).
 - Two free IP addresses on that LAN for U-Boot to use during the network boot, and a DHCP server (your router) for Debian.
+- The Drobo's own power supply (12 V, 8.33 A, 100 W) or one as strong. On a 4 A supply it ran one or two disks, but it lost power when a third disk spun up, and again at each boot until the extra disks came out.
 - The kit: the [`kit/`](kit/) folder of this repository.
 
 | Kit file | Runs on | What it does |
@@ -57,6 +58,7 @@ If you'd like an AI agent to help you through it, [`skills/drobo5n-debian/SKILL.
 | [`mkdrobodtb`](kit/mkdrobodtb), [`drobo5n-fixups.dtsi`](kit/drobo5n-fixups.dtsi) | the Drobo | Device tree fixups: drive-bay expanders, mSATA power, unused Ethernet ports off |
 | [`drobo-pmu.sh`](kit/drobo-pmu.sh), [`drobo-fand.sh`](kit/drobo-fand.sh), [`drobo-fan.service`](kit/drobo-fan.service) | the Drobo | Talk to the power-management chip; temperature-controlled fan |
 | [`drobo-bays.sh`](kit/drobo-bays.sh), [`drobo-bays.service`](kit/drobo-bays.service), [`drobo-bays-watch.service`](kit/drobo-bays-watch.service) | the Drobo | Power the bays that hold a disk at boot, a few seconds apart, and later whenever a disk is inserted |
+| [`drobo-leds.sh`](kit/drobo-leds.sh), [`drobo-leds.service`](kit/drobo-leds.service) | the Drobo | Front panel: bay lights (see section 8), power light, activity light, and the blue capacity lights for the bay disks |
 | [`initramfs-modules`](kit/initramfs-modules), [`initramfs-fsck-ext2`](kit/initramfs-fsck-ext2) | the Drobo | The USB, SATA and ext4 drivers the small initrd needs, and `fsck.ext2` for the rescue boot |
 
 ## 2. Get a console on U-Boot
@@ -223,11 +225,24 @@ From now on the Drobo boots Debian by itself. U-Boot reads about 20 MB from the 
 ssh you@drobo5n.local
 systemctl --failed                       # should be empty
 sudo drobo-bays status                   # disk present / powered, per bay
+/usr/local/sbin/drobo-leds status        # what each bay light shows, and why
 sudo journalctl -u drobo-fan -b          # "fan target 16" etc.
 cat /sys/class/hwmon/hwmon*/temp1_input  # SoC (and disk) temperatures, millidegrees
 ```
 
 - **Drive bays.** Bays are numbered 0 (top) to 4 (bottom). At boot, `drobo-bays` powers every bay that holds a disk, 4 s apart. The disks then appear as ordinary SATA disks (`/dev/sdb`…). Use them with whatever you like: ext4, mdadm, mergerfs and SnapRAID, or OpenMediaVault. Drobo's BeyondRAID disk packs are not readable. After boot, `drobo-bays-watch` powers a bay within a couple of seconds of a disk going in, and switches it off when the disk comes out (tested 12 Nov with an 8 TB disk in bay 4: Linux saw it about 15 s later, at 6 Gbps). It only acts on a change, so a bay you switched off stays off. `sudo drobo-bays on` powers every bay that holds a disk; `off` powers all bays down.
+- **Bay lights.** They follow Drobo's meanings where they can: green and yellow alternating is "don't remove", and red is "do something".
+
+  | Bay light | Meaning |
+  |---|---|
+  | Off | Empty, or the bay is switched off: safe to pull. Trust this only while the power light is green; at boot every bay is dark until `drobo-leds` starts. |
+  | Yellow | Powered, but nothing has the disk mounted. Switch the bay off (or use the dashboard's Safely remove) before pulling it. |
+  | Green | In use: mounted, or part of md, LVM or dm-crypt. |
+  | Green and red, alternating | In use, and a filesystem on it is at least 95% full (`FULL_PCT` in `/etc/default/drobo-leds`). |
+  | Green and yellow, alternating | Busy, don't remove: a program has the disk open (a check, `dd`, a SMART test), or a RAID it's in is syncing. |
+  | Red | Needs attention; the reason is in `/run/drobo-leds/attention-bays` (lines `N reason`). The dashboard marks a disk that won't mount and one with reallocated, pending or uncorrectable sectors. |
+  | Blinking red | Failed its SMART health check (`/run/drobo-leds/failed-bays`). |
+
 - **Fan.** `drobo-fand` sets the speed (01–31) from the hottest sensor, resent every 30 s. The power controller winds the speed down by itself if nobody keeps setting it. It never goes below 16, because the stock fan's bearing can stall at low speed. Tune it in `/etc/default/drobo-fan`, for example `FLOOR=12 SOC_HI=70`. If the fan doesn't start after a cold boot, give it a nudge, or replace it.
 - **Kernel updates.** Nothing to do by hand: `apt upgrade` works as usual.
   - When apt installs a kernel or rebuilds an initrd, a hook runs `mkdrobokernel`, which rebuilds `/boot/drobo`. Debian runs it twice per install; that's expected. It refuses to build with less than 50 MB free.
@@ -306,7 +321,7 @@ Tested on 12 Nov: holding the button from a cold power-on booted the rescue syst
 
 ### Web dashboard
 
-[`webui/`](webui/) is a separate package, `drobo-webui`, with a browser dashboard in the spirit of Drobo Dashboard. It covers bays and the front panel, capacity, SMART, temperatures and the fan, network and services, logs, and e-mail alerts. Its Sharing page puts each bay disk on the network as its own share, with per-person access (see File sharing below). It also has settings for the device name, the fan curve, bay power, HTTPS with a self-signed certificate, disk sleep, the SMART self-test schedule, software updates, and restart or shut down. It takes about 25 MB with lighttpd and PHP, and nothing else in the kit needs it, so skip it on a stick-only install. Download it from [the webui-v0.4.1 release](https://github.com/georgestephanis/drobo-5n/releases/tag/webui-v0.4.1), and see [`webui/README.md`](webui/README.md).
+[`webui/`](webui/) is a separate package, `drobo-webui`, with a browser dashboard in the spirit of Drobo Dashboard. It covers bays and the front panel, capacity, SMART, temperatures and the fan, network and services, logs, and e-mail alerts. Its Sharing page puts each bay disk on the network as its own share, with per-person access (see File sharing below). It also has settings for the device name, the fan curve, bay power, HTTPS with a self-signed certificate, disk sleep, the SMART self-test schedule, software updates, and restart or shut down. It takes about 25 MB with lighttpd and PHP, and nothing else in the kit needs it, so skip it on a stick-only install. Download it from [the webui-v0.4.3 release](https://github.com/georgestephanis/drobo-5n/releases/tag/webui-v0.4.3), and see [`webui/README.md`](webui/README.md).
 
 ![drobo-webui status page](webui/screenshots/status.png)
 
