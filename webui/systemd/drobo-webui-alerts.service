@@ -1,0 +1,6 @@
+[Unit]
+Description=Drobo 5N health check and e-mail alerts (drobo-webui)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/drobo-webui/drobo-webui-helper alert-check

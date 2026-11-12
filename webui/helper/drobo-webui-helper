@@ -1,0 +1,200 @@
+#!/usr/bin/php
+<?php
+/**
+ * drobo-webui-helper VERB [ARGS...] : the only way the web UI touches anything that needs root.
+ *
+ * The web server (www-data) may run this through sudo (see /etc/sudoers.d/drobo-webui), so every
+ * verb validates its own arguments: nothing from the command line or stdin reaches a shell, and
+ * only the files and commands listed here can be changed or run. Output is one JSON object.
+ */
+declare(strict_types=1);
+
+namespace DroboWebui;
+
+require '/usr/share/drobo-webui/lib/bootstrap.php';
+
+const FAN_DEFAULTS = ['FLOOR' => 16, 'SOC_LO' => 50, 'SOC_HI' => 75, 'DISK_LO' => 35, 'DISK_HI' => 50];
+const LOG_UNITS = [
+    'drobo-fan', 'drobo-leds', 'drobo-bays', 'drobo-powerbtn', 'drobo-boot-ok',
+    'drobo-webui', 'drobo-webui-alerts', 'smbd', 'nmbd', 'ssh', 'kernel',
+];
+
+function reply(array $data, int $code = 0): never
+{
+    echo json_encode(['ok' => $code === 0] + $data, JSON_UNESCAPED_SLASHES), "\n";
+    exit($code);
+}
+
+function fail(string $msg): never
+{
+    reply(['error' => $msg], 1);
+}
+
+function stdinJson(): array
+{
+    $raw = stream_get_contents(STDIN, 65536);
+    $j = json_decode((string) $raw, true);
+    is_array($j) || fail('expected a JSON object on stdin');
+    return $j;
+}
+
+/** True when run by the web server rather than by an administrator. */
+function fromWeb(): bool
+{
+    return getenv('SUDO_USER') === 'www-data';
+}
+
+if (posix_geteuid() !== 0) {
+    fail('must run as root (through sudo)');
+}
+
+$args = array_slice($argv, 1);
+$verb = array_shift($args) ?? '';
+
+try {
+    switch ($verb) {
+        case 'status':
+            $leds = Privileged::readDefaults('/etc/default/drobo-leds');
+            reply([
+                'bays' => Privileged::bays(),
+                'pmu' => Privileged::pmu(),
+                'gaugePaths' => preg_split('/\s+/', trim($leds['GAUGE_PATHS'] ?? '/')) ?: ['/'],
+            ]);
+
+        case 'smart':
+            reply(['smart' => Privileged::smart(($args[0] ?? '') === '--fresh')]);
+
+        case 'problems':
+            reply(['problems' => Alerts::evaluate(Config::load(), Privileged::bays(), Privileged::smart())]);
+
+        case 'settings-get':
+            $fan = array_map('intval', array_intersect_key(
+                Privileged::readDefaults('/etc/default/drobo-fan') + FAN_DEFAULTS,
+                FAN_DEFAULTS
+            ));
+            $leds = Privileged::readDefaults('/etc/default/drobo-leds');
+            reply([
+                'hostname' => gethostname(),
+                'fan' => $fan,
+                'gaugePaths' => preg_split('/\s+/', trim($leds['GAUGE_PATHS'] ?? '/')) ?: ['/'],
+                'mountPoints' => Hardware::mountPoints(),
+            ]);
+
+        case 'set-hostname':
+            $name = strtolower($args[0] ?? '');
+            preg_match('/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/', $name)
+                || fail('A device name uses letters, digits and hyphens (1-63, not starting or ending with a hyphen)');
+            $old = gethostname();
+            [$code, , $err] = Shell::run(['hostnamectl', 'set-hostname', $name]);
+            $code === 0 || fail("hostnamectl failed: $err");
+            $hosts = (string) file_get_contents('/etc/hosts');
+            copy('/etc/hosts', '/etc/hosts.bak');
+            $hosts = preg_replace_callback('/^(127\.0\.1\.1\s+)(.*)$/m', static fn($m) => $m[1] . $name, $hosts, 1, $n);
+            if ($n === 0) {
+                $hosts .= "127.0.1.1\t$name\n";
+            }
+            file_put_contents('/etc/hosts', $hosts);
+            Shell::run(['systemctl', 'try-restart', 'avahi-daemon.service']);
+            reply(['hostname' => $name, 'previous' => $old]);
+
+        case 'set-fan':
+            count($args) === 5 || fail('set-fan FLOOR SOC_LO SOC_HI DISK_LO DISK_HI');
+            [$floor, $sl, $sh, $dl, $dh] = $args;
+            $v = [
+                'FLOOR' => Config::int($floor, 1, 31, 'Minimum fan speed'),
+                'SOC_LO' => Config::int($sl, 30, 90, 'Processor temperature for minimum fan'),
+                'SOC_HI' => Config::int($sh, 35, 100, 'Processor temperature for full fan'),
+                'DISK_LO' => Config::int($dl, 20, 60, 'Disk temperature for minimum fan'),
+                'DISK_HI' => Config::int($dh, 25, 70, 'Disk temperature for full fan'),
+            ];
+            $v['SOC_LO'] < $v['SOC_HI'] || fail('The processor\'s full-fan temperature must be above its minimum-fan temperature');
+            $v['DISK_LO'] < $v['DISK_HI'] || fail('The disks\' full-fan temperature must be above their minimum-fan temperature');
+            Privileged::setDefaults('/etc/default/drobo-fan', $v);
+            Shell::run(['systemctl', 'try-restart', 'drobo-fan.service']);
+            reply(['fan' => $v]);
+
+        case 'set-gauge':
+            $args || fail('choose at least one filesystem');
+            $mounts = Hardware::mountPoints();
+            foreach ($args as $p) {
+                in_array($p, $mounts, true) || fail("$p is not a mounted filesystem");
+                preg_match('#^/[A-Za-z0-9_./-]*$#', $p) || fail("$p has characters the gauge settings can't hold");
+            }
+            Privileged::setDefaults('/etc/default/drobo-leds', ['GAUGE_PATHS' => implode(' ', array_unique($args))]);
+            Shell::run(['systemctl', 'try-restart', 'drobo-leds.service']);
+            reply(['gaugePaths' => array_values(array_unique($args))]);
+
+        case 'bay-power':
+            $bay = Config::int($args[0] ?? '', 0, 4, 'Bay');
+            $on = match ($args[1] ?? '') {
+                'on' => true,
+                'off' => false,
+                default => fail('bay-power N on|off'),
+            };
+            if (!$on) {
+                foreach (Hardware::disks() as $d) {
+                    if ($d['slot'] === "bay$bay" && Hardware::diskMounted($d['name'])) {
+                        fail("The disk in bay $bay is in use (mounted or part of an array). Unmount it first.");
+                    }
+                }
+            }
+            Privileged::setBayPower($bay, $on);
+            reply(['bay' => $bay, 'powered' => $on]);
+
+        case 'config-update':
+            $cfg = Config::applyUpdate(Config::load(), stdinJson());
+            Config::save($cfg);
+            reply(['config' => Config::public($cfg)]);
+
+        case 'set-password':
+            $in = stdinJson();
+            $new = (string) ($in['new'] ?? '');
+            strlen($new) >= 8 || fail('Use at least 8 characters');
+            strlen($new) <= 200 || fail('That password is too long');
+            $cfg = Config::load();
+            if (fromWeb() || isset($in['current'])) {
+                // The web UI must prove it knows the current password; only an admin at a shell can reset it.
+                $hash = $cfg['passwordHash'];
+                ($hash && password_verify((string) ($in['current'] ?? ''), $hash)) || fail('The current password is wrong');
+            }
+            $cfg['passwordHash'] = password_hash($new, PASSWORD_DEFAULT);
+            Config::save($cfg);
+            reply([]);
+
+        case 'test-email':
+            $cfg = Config::load();
+            ($cfg['alerts']['to'] !== '' && $cfg['alerts']['server'] !== '') || fail('Save a To address and a mail server first');
+            Smtp::send($cfg['alerts'], 'Test message from ' . gethostname(), "This is a test alert from drobo-webui.\n\nIf you can read it, alert mail works.\n");
+            reply(['sentTo' => $cfg['alerts']['to']]);
+
+        case 'alert-check':
+            fromWeb() && fail('not available from the web UI');
+            reply(['summary' => Alerts::check()]);
+
+        case 'logs':
+            $unit = $args[0] ?? '';
+            in_array($unit, LOG_UNITS, true) || fail('unknown log');
+            $lines = Config::int($args[1] ?? '200', 10, 2000, 'Lines');
+            $sel = $unit === 'kernel' ? ['-k'] : ['-u', $unit];
+            [, $out] = Shell::run(array_merge(['journalctl', '--no-pager', '-o', 'short-iso', '-n', (string) $lines], $sel), null, 20);
+            reply(['unit' => $unit, 'text' => $out]);
+
+        case 'power':
+            $action = match ($args[0] ?? '') {
+                'reboot' => 'reboot',
+                'poweroff' => 'poweroff',
+                default => fail('power reboot|poweroff'),
+            };
+            // A few seconds' delay so the web page gets its answer before the network goes away.
+            [$code, , $err] = Shell::run(['systemd-run', '--on-active=3', '--unit=drobo-webui-' . $action, 'systemctl', $action]);
+            $code === 0 || fail("systemd-run failed: $err");
+            reply(['action' => $action]);
+
+        default:
+            fail('unknown verb; see the comments in ' . __FILE__);
+    }
+} catch (\InvalidArgumentException $e) {
+    fail($e->getMessage());
+} catch (\Throwable $e) {
+    fail(get_class($e) . ': ' . $e->getMessage());
+}

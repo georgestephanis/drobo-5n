@@ -1,0 +1,29 @@
+#!/bin/sh
+set -e
+if [ "$1" = configure ]; then
+  install -d -m 0755 /etc/drobo-webui
+  if [ ! -e /etc/drobo-webui/config.json ]; then
+    echo '{"version": 1}' > /etc/drobo-webui/config.json
+  fi
+  chown root:www-data /etc/drobo-webui/config.json
+  chmod 0640 /etc/drobo-webui/config.json
+  install -d -m 0755 /var/lib/drobo-webui
+  install -d -m 0700 -o www-data -g www-data /var/lib/drobo-webui/web /var/lib/drobo-webui/sessions
+  chmod 0440 /etc/sudoers.d/drobo-webui
+  visudo -cf /etc/sudoers.d/drobo-webui >/dev/null
+  # Our own lighttpd instance serves port 80; Debian's would fight it for the port.
+  if systemctl is-enabled --quiet lighttpd.service 2>/dev/null || systemctl is-active --quiet lighttpd.service 2>/dev/null; then
+    echo "drobo-webui: disabling Debian's lighttpd.service (drobo-webui runs its own on port 80)"
+    systemctl disable --now lighttpd.service || true
+  fi
+  systemctl daemon-reload
+  systemctl enable drobo-webui.service drobo-webui-alerts.timer >/dev/null
+  systemctl restart drobo-webui.service
+  systemctl start drobo-webui-alerts.timer
+  if ! grep -q '"passwordHash": "' /etc/drobo-webui/config.json; then
+    echo
+    echo "drobo-webui: set the dashboard password with:  sudo drobo-webui-passwd"
+    echo "             then open http://$(hostname).local/"
+  fi
+fi
+exit 0

@@ -1,0 +1,6 @@
+#!/bin/sh
+set -e
+if [ "$1" = remove ] || [ "$1" = deconfigure ]; then
+  systemctl disable --now drobo-webui.service drobo-webui-alerts.timer >/dev/null 2>&1 || true
+fi
+exit 0

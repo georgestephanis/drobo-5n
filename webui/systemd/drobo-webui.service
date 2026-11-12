@@ -1,0 +1,16 @@
+[Unit]
+Description=Drobo 5N web dashboard (lighttpd + PHP)
+After=network.target
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/install -d -m 0755 /run/drobo-webui
+ExecStartPre=/usr/bin/install -d -m 0750 -o www-data -g www-data /run/drobo-webui/fcgi
+ExecStartPre=/usr/sbin/lighttpd -tt -f /etc/drobo-webui/lighttpd.conf
+ExecStart=/usr/sbin/lighttpd -D -f /etc/drobo-webui/lighttpd.conf
+ExecReload=/bin/kill -USR1 $MAINPID
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

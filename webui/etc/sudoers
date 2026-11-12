@@ -1,0 +1,4 @@
+# drobo-webui: the web server may run only the helper, which checks its own arguments.
+www-data ALL=(root) NOPASSWD: /usr/lib/drobo-webui/drobo-webui-helper
+# The dashboard polls every few seconds; don't write a log line (or open a PAM session) for each call.
+Defaults:www-data !pam_session, !syslog

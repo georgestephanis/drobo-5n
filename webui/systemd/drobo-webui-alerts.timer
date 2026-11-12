@@ -1,0 +1,9 @@
+[Unit]
+Description=Check Drobo 5N health every 5 minutes (drobo-webui)
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

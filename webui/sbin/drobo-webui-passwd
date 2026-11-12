@@ -1,0 +1,12 @@
+#!/bin/sh
+# drobo-webui-passwd : set (or reset) the web dashboard's admin password. Run with sudo.
+set -e
+[ "$(id -u)" = 0 ] || { echo "run with sudo" >&2; exit 1; }
+stty -echo 2>/dev/null || true
+printf 'New web dashboard password: '; IFS= read -r p1; echo
+printf 'Again: '; IFS= read -r p2; echo
+stty echo 2>/dev/null || true
+[ "$p1" = "$p2" ] || { echo "The two didn't match." >&2; exit 1; }
+# php's json_encode escapes the password safely; it travels on stdin, never on the command line
+printf '%s' "$p1" | php -r 'echo json_encode(["new" => stream_get_contents(STDIN)]);' \
+  | env -u SUDO_USER /usr/lib/drobo-webui/drobo-webui-helper set-password

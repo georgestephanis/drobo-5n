@@ -251,6 +251,10 @@ cat /sys/class/hwmon/hwmon*/temp1_input  # SoC (and disk) temperatures, millideg
 
   After the reboot, `findmnt /` should show `/dev/sda1`, `findmnt /boot` should show `/dev/sdb1[/boot]`, and the console should print `DROBO: boot files from the SSD`. Tested on 11 Nov with a 64 GB mSATA SSD: reboot to SSH went from 154 s to 79 s. Hiding the SSD's copy made it fall back to the stick (157 s), and the next `drobo-boot-ok` rebuilt the copy. A new set went through its trial boot from the SSD. If you stay on the stick instead: no swap, `noatime` (the installer's default), and consider `Storage=volatile` in `/etc/systemd/journald.conf`.
 
+- **Web dashboard (optional).** [`webui/`](webui/) is a separate package, `drobo-webui`, with a browser dashboard in the spirit of Drobo Dashboard. It covers bays and the front panel, capacity, SMART, temperatures and the fan, network and services, logs, and e-mail alerts. It also has settings for the device name, the fan curve, the capacity lights, bay power, and restart or shut down. It takes about 25 MB with lighttpd and PHP, and nothing else in the kit needs it, so skip it on a stick-only install. See [`webui/README.md`](webui/README.md).
+
+  ![drobo-webui status page](webui/screenshots/status.png)
+
 ## 9. Known limitations
 
 - **Without `drobo-powerbtn` running** (for example in the installer, or before the service starts), the power controller treats a press of the power button as "nothing is running" and cuts power at once, with no shutdown.

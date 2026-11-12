@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+if [ "$1" = purge ]; then
+  rm -f /etc/drobo-webui/config.json /etc/drobo-webui/config.json.new
+  rmdir /etc/drobo-webui 2>/dev/null || true
+  rm -rf /var/lib/drobo-webui /run/drobo-webui
+fi
+systemctl daemon-reload 2>/dev/null || true
+exit 0
