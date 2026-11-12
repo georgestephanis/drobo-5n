@@ -10,7 +10,7 @@ final class Privileged
 {
     private const PMU = '/usr/local/sbin/drobo-pmu';
     private const FAILED_BAYS = '/run/drobo-leds/failed-bays';
-    private const PMU_TTL = 30;      // drobo-pmu takes about 1.4 s per command, so cache it
+    private const PMU_TTL = 60;      // one full PMU read takes about 6 s, so cache it
     private const SMART_TTL = 120;
 
     /** Disk present / power for bays 0-4, from the backplane expander lines. */
@@ -40,23 +40,76 @@ final class Privileged
         }
     }
 
-    /** Fan target/actual (01-31) and PMU version, cached for PMU_TTL seconds. */
+    /**
+     * Fan, PMU version, power input and backup battery, cached for PMU_TTL seconds.
+     *
+     * PMU variables are read the way the stock firmware's pmuVarDo does it: "X<name>" selects a
+     * variable, then "=." reads it in decimal, "@." in hex, and "~.+" reads it and steps to the
+     * next one. All of these only read. Variables: a = input voltage (mV), v = backup battery
+     * voltage (mV), X = system flags (0x40 = running on battery), R = the five raw temperature
+     * sensors (°C). One drobo-pmu call holds the PMU lock for all of them, so nothing else can
+     * change the selection in between.
+     */
     public static function pmu(bool $fresh = false): array
     {
         return self::cached('pmu', $fresh ? 0 : self::PMU_TTL, static function (): array {
-            [, $out] = Shell::run([self::PMU, 'V', 'FT.', 'FA.'], null, 15);
-            $r = ['version' => null, 'fanTarget' => null, 'fanActual' => null];
+            $cmds = ['V', 'FT.', 'FA.', 'Xa', '=.', 'Xv', '=.', 'XX', '@.', 'XR', '~.+', '~.+', '~.+', '~.+', '~.+'];
+            [, $out] = Shell::run(array_merge([self::PMU], $cmds), null, 30);
+            $r = ['version' => null, 'fanTarget' => null, 'fanActual' => null, 'inputVolts' => null,
+                'batteryVolts' => null, 'onBattery' => null, 'sensors' => []];
+            $var = null;
             foreach (explode("\n", $out) as $l) {
-                if (preg_match('/^V\s+->\s+(\S+)/', $l, $m)) {
-                    $r['version'] = $m[1];
-                } elseif (preg_match('/^FT\.\s+->\s+FT(\d\d)!/', $l, $m)) {
-                    $r['fanTarget'] = (int) $m[1];
-                } elseif (preg_match('/^FA\.\s+->\s+FA(\d\d)!/', $l, $m)) {
-                    $r['fanActual'] = (int) $m[1];
+                if (!preg_match('/^(\S+)\s+->\s+(.*)$/', $l, $m)) {
+                    continue;
+                }
+                [$cmd, $reply] = [$m[1], trim($m[2])];
+                if ($cmd === 'V') {
+                    $r['version'] = $reply;
+                } elseif ($cmd === 'FT.' && preg_match('/^FT(\d\d)!/', $reply, $v)) {
+                    $r['fanTarget'] = (int) $v[1];
+                } elseif ($cmd === 'FA.' && preg_match('/^FA(\d\d)!/', $reply, $v)) {
+                    $r['fanActual'] = (int) $v[1];
+                } elseif ($cmd[0] === 'X') {
+                    $var = $reply === $cmd . '!' ? substr($cmd, 1) : null;  // selection acknowledged
+                } elseif ($var !== null && preg_match('/^[=@~](-?[0-9A-Fa-f]+)!$/', $reply, $v)) {
+                    $n = $cmd[0] === '@' ? hexdec($v[1]) : (int) $v[1];
+                    if ($var === 'a' && $n > 0) {
+                        $r['inputVolts'] = $n / 1000;
+                    } elseif ($var === 'v' && $n > 0) {
+                        $r['batteryVolts'] = $n / 1000;
+                    } elseif ($var === 'X') {
+                        $r['onBattery'] = ($n & 0x40) !== 0;
+                    } elseif ($var === 'R') {
+                        $r['sensors'][] = $n;
+                    }
                 }
             }
+            $r['batteryPercent'] = self::batteryPercent($r['batteryVolts']);
             return $r;
         });
+    }
+
+    /**
+     * Rough charge of a single Li-ion 18650 cell from its resting voltage. It's only a guide:
+     * the reading is taken while the PMU's charger may be topping the cell up.
+     */
+    public static function batteryPercent(?float $volts): ?int
+    {
+        if ($volts === null) {
+            return null;
+        }
+        $curve = [[3.30, 0], [3.50, 8], [3.60, 15], [3.70, 30], [3.80, 50], [3.90, 65], [4.00, 80], [4.10, 92], [4.18, 100]];
+        if ($volts <= $curve[0][0]) {
+            return 0;
+        }
+        for ($i = 1; $i < count($curve); $i++) {
+            [$v1, $p1] = $curve[$i];
+            if ($volts <= $v1) {
+                [$v0, $p0] = $curve[$i - 1];
+                return (int) round($p0 + ($p1 - $p0) * ($volts - $v0) / ($v1 - $v0));
+            }
+        }
+        return 100;
     }
 
     /**

@@ -19,6 +19,7 @@ It needs about 25 MB with its dependencies (lighttpd, PHP). On a system running 
 - **Status:** a picture of the front panel whose bay, power and blue capacity lights follow the same rules as `drobo-leds`. It also shows a list of bays plus the mSATA and USB disks, capacity, and a status line ("Your Drobo is working normally" or what's wrong). Select a bay for its disk's details, or to power the bay on or off.
 - **Disks:** every disk by slot (bay 0–4, mSATA, USB stick) with model, size, temperature, SMART health, hours powered on and bad-sector counts. It also lists filesystems and any Linux RAID (md) arrays. Sleeping disks aren't woken to read SMART.
 - **System:** OS, kernel and boot files, whether the boot copy on the SSD is in place, load, memory, processor temperature, fan level from the PMU, network, and the state of the kit's services.
+- **Power:** the 12 V input voltage and the backup battery (a single 18650 cell) as read by the PMU, with a rough charge level. If the power fails, the PMU signals Linux and the battery carries the box through a clean shutdown; the dashboard shows when it's running on battery.
 - **Settings:**
   - Device name (`NAME.local`).
   - Fan curve (`/etc/default/drobo-fan`).
@@ -28,15 +29,15 @@ It needs about 25 MB with its dependencies (lighttpd, PHP). On a system running 
   - Dashboard password.
   - Restart and shut down.
 - **Logs:** the journal for the kit's services, SSH, Samba and the kernel.
-- **Alerts:** a timer runs every 5 minutes and mails a problem once when it starts and once when it clears. It covers a failing SMART check, bad sectors, hot disks or processor, a full filesystem, a degraded RAID array, a failed bay and failed services.
+- **Alerts:** a timer runs every 5 minutes and mails a problem once when it starts and once when it clears. It covers a failing SMART check, bad sectors, hot disks or processor, a full filesystem, a degraded RAID array, a failed bay, failed services, a low backup battery, a sagging power input, and running on battery.
 
 ## Install
 
-Download the package from the [releases page](https://github.com/georgestephanis/drobo-5n/releases/tag/webui-v0.1.1), or build it yourself (see [Building](#building)). Then, on the Drobo with the kit already installed:
+Download the package from the [releases page](https://github.com/georgestephanis/drobo-5n/releases/tag/webui-v0.1.2), or build it yourself (see [Building](#building)). Then, on the Drobo with the kit already installed:
 
 ```sh
-wget https://github.com/georgestephanis/drobo-5n/releases/download/webui-v0.1.1/drobo-webui_0.1.1_all.deb
-sudo apt install ./drobo-webui_0.1.1_all.deb
+wget https://github.com/georgestephanis/drobo-5n/releases/download/webui-v0.1.2/drobo-webui_0.1.2_all.deb
+sudo apt install ./drobo-webui_0.1.2_all.deb
 sudo drobo-webui-passwd          # set the dashboard password
 ```
 

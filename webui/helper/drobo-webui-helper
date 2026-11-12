@@ -65,7 +65,7 @@ try {
             reply(['smart' => Privileged::smart(($args[0] ?? '') === '--fresh')]);
 
         case 'problems':
-            reply(['problems' => Alerts::evaluate(Config::load(), Privileged::bays(), Privileged::smart())]);
+            reply(['problems' => Alerts::evaluate(Config::load(), Privileged::bays(), Privileged::smart(), Privileged::pmu())]);
 
         case 'settings-get':
             $fan = array_map('intval', array_intersect_key(

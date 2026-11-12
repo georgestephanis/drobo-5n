@@ -12,10 +12,16 @@ final class Alerts
 {
     public const LEVELS = ['info' => 0, 'warning' => 1, 'critical' => 2];
 
+    /** 12 V input less 5%: a supply that sags below this under load is too small. */
+    private const INPUT_VOLTS_MIN = 11.4;
+    /** One Li-ion cell: under 3.6 V it's below about 15% charge, under 3.4 V nearly empty. */
+    private const BATTERY_VOLTS_LOW = 3.6;
+    private const BATTERY_VOLTS_CRITICAL = 3.4;
+
     /**
      * @return list<array{key:string,level:string,message:string}>
      */
-    public static function evaluate(array $cfg, array $bays, array $smart): array
+    public static function evaluate(array $cfg, array $bays, array $smart, ?array $pmu = null): array
     {
         $a = $cfg['alerts'];
         $out = [];
@@ -62,6 +68,24 @@ final class Alerts
         }
         if ($temps['soc'] !== null && $temps['soc'] >= $a['socTempMax']) {
             $add('temp-soc', 'warning', "The processor is at {$temps['soc']} °C (limit {$a['socTempMax']} °C).");
+        }
+
+        // Power input and backup battery, from the PMU (see Privileged::pmu()).
+        if ($pmu !== null) {
+            if ($pmu['onBattery'] ?? false) {
+                $add('power-onbattery', 'critical', 'The power input has failed: running on the backup battery.');
+            }
+            $in = $pmu['inputVolts'] ?? null;
+            if ($in !== null && $in < self::INPUT_VOLTS_MIN && !($pmu['onBattery'] ?? false)) {
+                $add('power-input-low', 'warning', sprintf('The power input is at %.2f V (expected about 12 V). '
+                    . 'The power supply may be too small for the disks.', $in));
+            }
+            $bv = $pmu['batteryVolts'] ?? null;
+            if ($bv !== null && $bv < self::BATTERY_VOLTS_LOW) {
+                $add('battery-low', $bv < self::BATTERY_VOLTS_CRITICAL ? 'critical' : 'warning', sprintf(
+                    'The backup battery is at %.2f V. It may not last through a clean shutdown after a power cut. '
+                    . 'If it stays this low after a few hours on power, replace the 18650 cell.', $bv));
+            }
         }
 
         foreach (Hardware::filesystems() as $fs) {
@@ -111,7 +135,7 @@ final class Alerts
     public static function check(): string
     {
         $cfg = Config::load();
-        $now = self::evaluate($cfg, Privileged::bays(), Privileged::smart());
+        $now = self::evaluate($cfg, Privileged::bays(), Privileged::smart(), Privileged::pmu());
         $stateFile = VAR_DIR . '/alert-state.json';
         $prev = json_decode((string) @file_get_contents($stateFile), true) ?: [];
         $min = self::LEVELS[$cfg['alerts']['minLevel']] ?? 1;

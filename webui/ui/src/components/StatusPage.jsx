@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { api, bytes, duration, hours, slotName, temp } from '../api.js';
+import { api, bytes, duration, hours, memBytes, memInstalled, slotName, temp } from '../api.js';
 import { usePoll, useAction } from '../hooks.js';
 import FrontPanel, { bayLight, powerLight } from './FrontPanel.jsx';
 import { Card, Facts, Icon, Meter, Message, Pill } from './ui.jsx';
@@ -94,9 +94,12 @@ export default function StatusPage({ status, problems, unit, admin }) {
           <div className="tiles">
             <Tile label="Processor" value={temp(s.temperatures.soc, unit)} />
             <Tile label="Fan" value={fan != null ? `${Math.round((fan / 31) * 100)}%` : '—'} sub={s.pmu?.fanTarget != null ? `target ${s.pmu.fanTarget}/31` : ''} />
+            <Tile label="Backup battery" value={s.pmu?.batteryPercent != null ? `${s.pmu.batteryPercent}%` : '—'}
+              sub={s.pmu?.onBattery ? 'power failed: running on battery' : s.pmu?.batteryVolts != null ? `${s.pmu.batteryVolts.toFixed(2)} V` : ''} />
+            <Tile label="Power input" value={s.pmu?.inputVolts != null ? `${s.pmu.inputVolts.toFixed(2)} V` : '—'} sub="12 V supply" />
             <Tile label="Up for" value={duration(s.system.uptimeSeconds)} />
             <Tile label="Load" value={s.system.load[0].toFixed(2)} sub={`${s.system.cpus} cores`} />
-            <Tile label="Memory" value={`${Math.round(((s.system.memTotal - s.system.memAvailable) / s.system.memTotal) * 100)}%`} sub={`of ${bytes(s.system.memTotal, 0)}`} />
+            <Tile label="Memory" value={`${Math.round(((s.system.memTotal - s.system.memAvailable) / s.system.memTotal) * 100)}%`} sub={`of ${memBytes(memInstalled(s.system.memTotal), 0)}`} />
             <Tile label="Address" small value={ip ? ip.split('/')[0] : '—'} sub={`${s.system.hostname}.local`} />
           </div>
         </Card>

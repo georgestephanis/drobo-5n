@@ -34,6 +34,25 @@ export const api = {
 
 // --- formatting -----------------------------------------------------------
 
+/** Memory sizes: binary units (1 GB = 1024³ bytes), the way RAM is sold and labelled. */
+export function memBytes(n, digits = 1) {
+  if (n == null) return '—';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let i = 0;
+  let v = n;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v.toFixed(i === 0 ? 0 : digits)} ${units[i]}`;
+}
+
+/** Installed RAM: what Linux can use, rounded up to the next power of two (it reserves some). */
+export function memInstalled(total) {
+  return total ? 2 ** Math.ceil(Math.log2(total)) : null;
+}
+
+/** Disk and file sizes: decimal units (1 GB = 1000³ bytes), the way disks are sold and labelled. */
 export function bytes(n, digits = 1) {
   if (n == null) return '—';
   const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];

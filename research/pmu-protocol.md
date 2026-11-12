@@ -42,3 +42,40 @@ Only one program should talk to the port at a time; two at once got jumbled repl
 - The request is **SoC GPIO 40** (`bspIsPowerDownReq` reads GPIO bank 1, mask `0x100`; it's `gpiochip1` line 8 under Linux). It goes high on a press, but **only after the CPU has sent `K`**. Before that, a press makes the PMU cut power immediately. That was seen under Linux on 11 Nov: an instant power cut with the root mounted.
 - The kit's `drobo-powerbtn` service sends `K` at boot, waits for GPIO 40 to rise, and runs `systemctl poweroff`. A systemd shutdown hook sends `S` once the filesystems are read-only. Tested on 11 Nov: one short press gives a red power LED, a clean shutdown, and power off in about 5 s. Linux's own power-off still says "Power off not available"; the hook cuts power before it gets there.
 - From standby, a short press (300 ms) powers the board on.
+
+## Reading PMU variables: voltages, flags, sensors
+
+The stock firmware's `pmuVarDo` reads a variable in two steps: `X<name>` selects it (reply `X<name>!`), then a one-character operation plus `.` reads it. `=.` reads in decimal, `@.` in hex, and `~.+` reads and steps to the next entry. These only read. Both steps must go in one `drobo-pmu` call, so the lock stops anything else from changing the selection in between. Values seen on 11 Nov:
+
+| Select, then read | Reply | Meaning |
+|---|---|---|
+| `Xa` `=.` | `=11965!` | Input voltage in mV (the firmware calls it "AC"; on the 5N it's the 12 V barrel input) |
+| `Xv` `=.` | `=4159!` | Backup battery voltage in mV: one 18650 cell, here fully charged |
+| `XX` `@.` | `@603!` | System flags. `0x40` set means running on battery (`pmuPowerTypeCheck`: "PMU is Running on DC Power") |
+| `XR` `~.+` ×5 | `~21!` `~21!` `~21!` `~22!` `~26!` | Raw temperature sensors in °C. vxWorks reads five and labels them as slots. |
+| `XCp` `=.` | `=45!` | PMU core temperature |
+
+Reading `Xa` alone (or `a.`) returns no value, which looks like "not supported" but isn't.
+
+Info requests, also read-only:
+- `Y` gives the state flags and PMU uptime (minutes:seconds). The flags were `0x0680` before the CPU had sent `K` and `0x06C0` after, so `0x40` there is "CPU awake", not battery.
+- `B` gives battery-backup statistics, six numbers (`18,0,0,0,0,1`; after a power cut the first went back to 1).
+- `R` gives the shutdown reason (`0x0000,--`).
+- `D` gives temperatures: maximum and average disk, fan, sampling period, five slots, CPU and PMU.
+
+## The backup battery and power failure
+
+- The battery is a single 18650. Under vxWorks it backs a write cache in RAM. On power loss vxWorks logs "AC Failure ... Instigating Hibernation Mode". It saves the cached journals ("Stache Success --> Turning Battery OFF") or keeps the RAM alive on battery. At the next boot the PMU reports whether "the DRAM data was VALID at bootup".
+- The PMU tells the CPU through GPIO interrupts, set up in `bspGPIOInterruptSetup`:
+
+| SoC GPIO | Signal |
+|---|---|
+| 32 | Power failure ("PMU Panic"; goes low on power loss) |
+| 40 | Power-down request |
+| 57 | PMU over-temperature |
+| 29 | Disk inserted |
+| 65 | The "Clear Disk" button |
+
+  GPIO 31 is an output that turns the battery backup on.
+- **Tested under Linux on 11 Nov, with no disks in the bays.** Pulling the DC plug dropped GPIO 32 and raised GPIO 40 in the same millisecond. `drobo-powerbtn` took it as a button press and ran `poweroff`. Linux finished a clean shutdown on battery 3.5 s later, and the board went off. The PMU restarted too: its uptime and the first `B` counter reset. How long the battery can carry the board isn't measured yet.
+- `drobo-webui` 0.1.2 shows the input voltage, the battery voltage with a rough charge, the on-battery flag and the five sensors. It alerts on a low battery (under 3.6 V), a sagging input (under 11.4 V) and running on battery.
