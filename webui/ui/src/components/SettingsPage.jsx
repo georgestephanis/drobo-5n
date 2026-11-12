@@ -20,9 +20,11 @@ export default function SettingsPage({ reloadSession }) {
         <DateTime data={data} onSaved={load} />
         <Fan data={data} />
         <Gauge data={data} />
+        <DiskCare data={data} onSaved={load} />
         <Password />
         <Alerts data={data} onSaved={load} />
         <Power />
+        <Updates />
       </div>
     </div>
   );
@@ -335,6 +337,108 @@ function Power() {
         <button className="danger" onClick={() => go('poweroff', 'Shut the Drobo down now?', 'Shutting down.')} disabled={act.busy}>Shut down</button>
       </div>
       <Message state={act} />
+    </Card>
+  );
+}
+
+const SCHEDULES = {
+  off: 'Off',
+  weekly: 'Short test every Sunday at 3:00',
+  'weekly-monthly': 'Short test every Sunday, long test on the 1st of each month',
+};
+
+function DiskCare({ data, onSaved }) {
+  const d = data.disks;
+  const [min, setMin] = useState(d.spindownMinutes);
+  const [sched, setSched] = useState(d.smartSchedule);
+  const [act, run] = useAction();
+  const save = (e) => {
+    e.preventDefault();
+    run(async () => {
+      const r = await api.post('settings/disks', { spindownMinutes: Number(min), smartSchedule: sched });
+      onSaved();
+      return r;
+    }, 'Saved.');
+  };
+  return (
+    <Card title="Disk sleep and self-tests">
+      <form onSubmit={save} className="form">
+        <Field label="Spin bay disks down after" hint={d.hdparm ? 'Only spinning disks in the bays. A sleeping disk takes several seconds to wake for the first file.' : 'Needs hdparm: sudo apt install hdparm'}>
+          <select value={min} onChange={(e) => setMin(Number(e.target.value))} disabled={!d.hdparm}>
+            {d.spindownChoices.map((m) => <option key={m} value={m}>{m === 0 ? 'Never' : m < 60 ? `${m} minutes idle` : `${m / 60} hour${m > 60 ? 's' : ''} idle`}</option>)}
+          </select>
+        </Field>
+        <Field label="SMART self-tests" hint={d.smartd ? 'Run by smartd. A test due while a disk sleeps runs when it wakes. Failures show on the Disks page and blink the bay red.' : 'smartd is not running.'}>
+          <select value={sched} onChange={(e) => setSched(e.target.value)}>
+            {Object.entries(SCHEDULES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            {!(sched in SCHEDULES) && <option value={sched}>{sched === 'custom' ? 'Your own schedule in /etc/smartd.conf' : 'Unknown'}</option>}
+          </select>
+        </Field>
+        <div className="row"><button className="primary" disabled={act.busy}>Save</button></div>
+        <Message state={act} />
+      </form>
+    </Card>
+  );
+}
+
+function Updates() {
+  const [u, setU] = useState(null);
+  const [error, setError] = useState('');
+  const [act, run] = useAction();
+  const load = () => api.get('updates').then((r) => { setU(r.updates); setError(''); }, (e) => setError(e.message));
+  useEffect(() => { load(); }, []);
+  // Poll while apt runs in the background.
+  useEffect(() => {
+    if (!u?.running) return undefined;
+    const id = setInterval(load, 3000);
+    return () => clearInterval(id);
+  }, [u?.running]);
+
+  const start = (action, done) => run(async () => {
+    const r = await api.post('updates', { action });
+    setU(r.updates);
+  }, done);
+  const n = u?.packages.length ?? 0;
+  const sec = u?.packages.filter((p) => p.security).length ?? 0;
+  const ago = u?.checked ? new Date(u.checked * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'never';
+
+  return (
+    <Card title="Software updates" className="span2">
+      {error && <p className="msg error">{error}</p>}
+      {!u && !error && <p className="hint">Checking…</p>}
+      {u && (
+        <>
+          <p>
+            {u.running ? <span className="pill warning">apt is running…</span>
+              : n ? <span className={`pill ${sec ? 'warning' : 'ok'}`}>{n} update{n > 1 ? 's' : ''}{sec ? `, ${sec} security` : ''}</span>
+                : <span className="pill ok">Up to date</span>}{' '}
+            <span className="hint">Package lists last refreshed {ago}. {u.freeMB} MB free on the system disk.</span>
+          </p>
+          {u.rebootNeeded && <p className="msg warning">A new kernel is installed. Restart to use it.</p>}
+          {n > 0 && (
+            <details>
+              <summary>Packages</summary>
+              <ul className="plain">
+                {u.packages.map((p) => <li key={p.name}><code>{p.name}</code> {p.from ? `${p.from} → ` : ''}{p.to}{p.security ? ' (security)' : ''}</li>)}
+              </ul>
+            </details>
+          )}
+          <div className="row">
+            <button onClick={() => start('check', 'Refreshing the package lists.')} disabled={act.busy || u.running}>Check now</button>
+            <button className="primary" disabled={act.busy || u.running || !n}
+              onClick={() => window.confirm(`Install ${n} update${n > 1 ? 's' : ''}? Services may restart, and this page may stop answering for a moment.`) && start('install', 'Installing in the background.')}>
+              Install updates
+            </button>
+          </div>
+          <Message state={act} />
+          {u.log && (
+            <details>
+              <summary>Last run</summary>
+              <pre className="log">{u.log}</pre>
+            </details>
+          )}
+        </>
+      )}
     </Card>
   );
 }

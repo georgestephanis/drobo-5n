@@ -16,7 +16,7 @@ require '/usr/share/drobo-webui/lib/bootstrap.php';
 const FAN_DEFAULTS = ['FLOOR' => 16, 'SOC_LO' => 50, 'SOC_HI' => 75, 'DISK_LO' => 35, 'DISK_HI' => 50];
 const LOG_UNITS = [
     'drobo-fan', 'drobo-leds', 'drobo-bays', 'drobo-powerbtn', 'drobo-boot-ok',
-    'drobo-webui', 'drobo-webui-alerts', 'smbd', 'nmbd', 'ssh', 'kernel',
+    'drobo-webui', 'drobo-webui-alerts', 'drobo-webui-apt', 'smartd', 'smbd', 'nmbd', 'ssh', 'kernel',
 ];
 
 function reply(array $data, int $code = 0): never
@@ -79,6 +79,7 @@ try {
                 'gaugePaths' => preg_split('/\s+/', trim($leds['GAUGE_PATHS'] ?? '/')) ?: ['/'],
                 'mountPoints' => Hardware::mountPoints(),
                 'time' => Privileged::timeInfo(),
+                'disks' => Privileged::diskSettings(),
             ]);
 
         case 'set-hostname':
@@ -208,6 +209,28 @@ try {
             ($cfg['alerts']['to'] !== '' && $cfg['alerts']['server'] !== '') || fail('Save a To address and a mail server first');
             Smtp::send($cfg['alerts'], 'Test message from ' . gethostname(), "This is a test alert from drobo-webui.\n\nIf you can read it, alert mail works.\n");
             reply(['sentTo' => $cfg['alerts']['to']]);
+
+        case 'set-disks':
+            // set-disks SPINDOWN_MINUTES SCHEDULE
+            $min = Config::int($args[0] ?? '', 0, 240, 'Spin-down minutes');
+            $before = Privileged::diskSettings();
+            $applied = [];
+            if ($min !== $before['spindownMinutes']) {
+                $applied = Privileged::setSpindown($min);
+            }
+            $sched = $args[1] ?? '';
+            if ($sched !== $before['smartSchedule']) {
+                Privileged::setSmartSchedule($sched);
+            }
+            reply(['disks' => Privileged::diskSettings(), 'applied' => $applied]);
+
+        case 'updates':
+            // updates [check|install]: no argument only reports
+            if (($args[0] ?? '') !== '') {
+                Privileged::startApt($args[0]);
+                usleep(300000);
+            }
+            reply(['updates' => Privileged::updatesInfo()]);
 
         case 'alert-check':
             fromWeb() && fail('not available from the web UI');

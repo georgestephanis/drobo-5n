@@ -36,7 +36,8 @@ final class Alerts
         }
         foreach ($bays as $b) {
             $n = $b['bay'];
-            if ($b['failed']) {
+            $sd = $bySlot["bay$n"]['name'] ?? null;
+            if ($b['failed'] && !($sd !== null && ($smart[$sd]['passed'] ?? null) === false)) {   // a SMART failure gets its own alert below
                 $add("bay$n-failed", 'critical', "Bay $n is marked as failed.");
             }
             if ($b['present'] && $b['powered'] && !isset($bySlot["bay$n"])) {
@@ -135,7 +136,9 @@ final class Alerts
     public static function check(): string
     {
         $cfg = Config::load();
-        $now = self::evaluate($cfg, Privileged::bays(), Privileged::smart(), Privileged::pmu());
+        $smart = Privileged::smart();
+        Privileged::syncSmartFailedBays($smart);
+        $now = self::evaluate($cfg, Privileged::bays(), $smart, Privileged::pmu());
         $stateFile = VAR_DIR . '/alert-state.json';
         $prev = json_decode((string) @file_get_contents($stateFile), true) ?: [];
         $min = self::LEVELS[$cfg['alerts']['minLevel']] ?? 1;

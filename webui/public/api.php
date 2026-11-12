@@ -129,6 +129,16 @@ try {
         case 'POST test-email':
             out(Helper::call('test-email', [], null, 90));
 
+        case 'GET updates':
+            out(Helper::call('updates', [], null, 90));
+
+        case 'POST updates':
+            out(Helper::call('updates', [(string) (body()['action'] ?? '')], null, 90));
+
+        case 'POST settings/disks':
+            $b = body();
+            out(Helper::call('set-disks', [(string) (int) ($b['spindownMinutes'] ?? 0), (string) ($b['smartSchedule'] ?? '')], null, 60));
+
         case 'POST power':
             out(Helper::call('power', [(string) (body()['action'] ?? '')]));
 

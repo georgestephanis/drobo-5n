@@ -19,7 +19,7 @@ keep() { [ -e "$1" ] && [ ! -e "$1.orig" ] && cp -a "$1" "$1.orig"; return 0; }
 echo "== packages"
 apt-get update -q
 DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
-  u-boot-tools device-tree-compiler xz-utils gpiod busybox avahi-daemon openssh-server
+  u-boot-tools device-tree-compiler xz-utils gpiod busybox avahi-daemon openssh-server hdparm
 apt-mark manual openssh-server   # so removing the installer's task packages can't take it away
 apt-get clean
 echo 'APT::Keep-Downloaded-Packages "false";' > /etc/apt/apt.conf.d/99drobo-no-cache

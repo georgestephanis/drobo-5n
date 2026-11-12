@@ -7,6 +7,8 @@
 #   SoC  (hwmon "*thermal*"):  SOC_LO C -> FLOOR,  SOC_HI C -> 31
 #   disks (hwmon "drivetemp"): DISK_LO C -> FLOOR, DISK_HI C -> 31
 # FLOOR keeps the fan from stalling (its bearing is sticky at low speed). Any read error -> 31.
+# A disk that is asleep (hdparm -C says standby) is skipped: reading drivetemp can wake some
+# drives or reset their spin-down timer, and a sleeping disk isn't warming up anyway.
 # Settings can be overridden in /etc/default/drobo-fan.
 FLOOR=16 SOC_LO=50 SOC_HI=75 DISK_LO=35 DISK_HI=50 PERIOD=30
 [ -r /etc/default/drobo-fan ] && . /etc/default/drobo-fan
@@ -26,7 +28,12 @@ level() {
     name=$(cat "$h/name" 2>/dev/null) || continue
     case "$name" in
       *thermal*) lo=$SOC_LO hi=$SOC_HI ;;
-      drivetemp) lo=$DISK_LO hi=$DISK_HI ;;
+      drivetemp) lo=$DISK_LO hi=$DISK_HI
+        if command -v hdparm >/dev/null; then
+          for b in "$h"/device/block/*; do
+            [ -e "$b" ] && case "$(hdparm -C "/dev/${b##*/}" 2>/dev/null)" in *standby*|*sleeping*) continue 2 ;; esac
+          done
+        fi ;;
       *) continue ;;
     esac
     for f in "$h"/temp*_input; do

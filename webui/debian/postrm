@@ -11,6 +11,8 @@ if [ "$1" = purge ]; then
   fi
   rm -f /etc/systemd/timesyncd.conf.d/drobo-webui.conf.bak
   rmdir /etc/systemd/timesyncd.conf.d 2>/dev/null || true
+  # Disk spin-down rule from Settings (smartd.conf edits are kept; its .bak is the original)
+  rm -f /etc/udev/rules.d/69-drobo-webui-spindown.rules
 fi
 systemctl daemon-reload 2>/dev/null || true
 exit 0

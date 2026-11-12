@@ -244,3 +244,10 @@ button.link { background: none; border: 0; padding: 0; color: inherit; text-deco
 .table.clickable tbody tr:hover td { background: rgba(124, 194, 66, 0.06); }
 .card-actions .link { color: var(--blue); font-size: 13px; }
 .tile-value.small { font-size: 16px; line-height: 1.6; }
+
+/* Settings > Software updates */
+details { margin: 8px 0; }
+details summary { cursor: pointer; color: var(--muted, inherit); }
+ul.plain { list-style: none; padding: 0; margin: 6px 0; max-height: 240px; overflow: auto; }
+ul.plain li { padding: 2px 0; }
+details .log { max-height: 240px; margin-top: 6px; }

@@ -2,7 +2,7 @@ Package: drobo-webui
 Version: @VERSION@
 Architecture: all
 Maintainer: George Stephanis <george@bigorangelab.com>
-Depends: lighttpd, php-cgi, php-cli, sudo, smartmontools, gpiod, iproute2, systemd
+Depends: lighttpd, php-cgi, php-cli, sudo, smartmontools, hdparm, gpiod, iproute2, systemd
 Section: admin
 Priority: optional
 Homepage: https://github.com/georgestephanis/drobo-5n
