@@ -2,6 +2,9 @@
 set -e
 if [ "$1" = purge ]; then
   rm -f /etc/drobo-webui/config.json /etc/drobo-webui/config.json.new
+  rm -f /etc/drobo-webui/sharing.json /etc/drobo-webui/sharing.json.new /etc/samba/drobo-webui-shares.conf
+  rmdir /srv/disks 2>/dev/null || true
+  # Samba accounts and the drobo-share user are kept: files on the disks may belong to them.
   rm -rf /etc/drobo-webui/tls
   rmdir /etc/drobo-webui 2>/dev/null || true
   rm -rf /var/lib/drobo-webui /run/drobo-webui
@@ -16,4 +19,5 @@ if [ "$1" = purge ]; then
   rm -f /etc/udev/rules.d/69-drobo-webui-spindown.rules
 fi
 systemctl daemon-reload 2>/dev/null || true
+udevadm control --reload 2>/dev/null || true
 exit 0

@@ -252,3 +252,16 @@ details summary { cursor: pointer; color: var(--muted, inherit); }
 ul.plain { list-style: none; padding: 0; margin: 6px 0; max-height: 240px; overflow: auto; }
 ul.plain li { padding: 2px 0; }
 details .log { max-height: 240px; margin-top: 6px; }
+
+/* Sharing page */
+.steps { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.step { display: flex; gap: 10px; align-items: flex-start; color: var(--dim); }
+.step .icon { flex: none; width: 20px; height: 20px; margin-top: 1px; }
+.step.done { color: inherit; }
+.step.done .icon { color: var(--green-dark); }
+.sub-title { font-size: 0.95rem; margin: 18px 0 6px; }
+.table td.actions { white-space: nowrap; text-align: right; }
+.table td.actions > * + * { margin-left: 8px; }
+.table td.space { min-width: 140px; }
+.checks.indent { padding-left: 26px; }
+.user-form { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 8px 0 12px; }

@@ -56,7 +56,7 @@ If you'd like an AI agent to help you through it, [`skills/drobo5n-debian/SKILL.
 | [`drobo-powerbtn`](kit/drobo-powerbtn.sh), [`drobo-pmu-poweroff`](kit/drobo-pmu-poweroff.sh), [`drobo-watchdog.conf`](kit/drobo-watchdog.conf) | the Drobo | Power button → clean shutdown, `poweroff` cuts power, watchdog resets a hung system |
 | [`mkdrobodtb`](kit/mkdrobodtb), [`drobo5n-fixups.dtsi`](kit/drobo5n-fixups.dtsi) | the Drobo | Device tree fixups: drive-bay expanders, mSATA power, unused Ethernet ports off |
 | [`drobo-pmu.sh`](kit/drobo-pmu.sh), [`drobo-fand.sh`](kit/drobo-fand.sh), [`drobo-fan.service`](kit/drobo-fan.service) | the Drobo | Talk to the power-management chip; temperature-controlled fan |
-| [`drobo-bays.sh`](kit/drobo-bays.sh), [`drobo-bays.service`](kit/drobo-bays.service) | the Drobo | Power the bays that hold a disk at boot, a few seconds apart |
+| [`drobo-bays.sh`](kit/drobo-bays.sh), [`drobo-bays.service`](kit/drobo-bays.service), [`drobo-bays-watch.service`](kit/drobo-bays-watch.service) | the Drobo | Power the bays that hold a disk at boot, a few seconds apart, and later whenever a disk is inserted |
 | [`initramfs-modules`](kit/initramfs-modules), [`initramfs-fsck-ext2`](kit/initramfs-fsck-ext2) | the Drobo | The USB, SATA and ext4 drivers the small initrd needs, and `fsck.ext2` for the rescue boot |
 
 ## 2. Get a console on U-Boot
@@ -227,7 +227,7 @@ sudo journalctl -u drobo-fan -b          # "fan target 16" etc.
 cat /sys/class/hwmon/hwmon*/temp1_input  # SoC (and disk) temperatures, millidegrees
 ```
 
-- **Drive bays.** Bays are numbered 0 (top) to 4 (bottom). At boot, `drobo-bays` powers every bay that holds a disk, 4 s apart. The disks then appear as ordinary SATA disks (`/dev/sdb`…). Use them with whatever you like: ext4, mdadm, mergerfs and SnapRAID, or OpenMediaVault. Drobo's BeyondRAID disk packs are not readable. `sudo drobo-bays on` rescans after you insert a disk; `off` powers all bays down.
+- **Drive bays.** Bays are numbered 0 (top) to 4 (bottom). At boot, `drobo-bays` powers every bay that holds a disk, 4 s apart. The disks then appear as ordinary SATA disks (`/dev/sdb`…). Use them with whatever you like: ext4, mdadm, mergerfs and SnapRAID, or OpenMediaVault. Drobo's BeyondRAID disk packs are not readable. After boot, `drobo-bays-watch` powers a bay within a couple of seconds of a disk going in, and switches it off when the disk comes out (tested 12 Nov with an 8 TB disk in bay 4: Linux saw it about 15 s later, at 6 Gbps). It only acts on a change, so a bay you switched off stays off. `sudo drobo-bays on` powers every bay that holds a disk; `off` powers all bays down.
 - **Fan.** `drobo-fand` sets the speed (01–31) from the hottest sensor, resent every 30 s. The power controller winds the speed down by itself if nobody keeps setting it. It never goes below 16, because the stock fan's bearing can stall at low speed. Tune it in `/etc/default/drobo-fan`, for example `FLOOR=12 SOC_HI=70`. If the fan doesn't start after a cold boot, give it a nudge, or replace it.
 - **Kernel updates.** Nothing to do by hand: `apt upgrade` works as usual.
   - When apt installs a kernel or rebuilds an initrd, a hook runs `mkdrobokernel`, which rebuilds `/boot/drobo`. Debian runs it twice per install; that's expected. It refuses to build with less than 50 MB free.
@@ -306,13 +306,15 @@ Tested on 12 Nov: holding the button from a cold power-on booted the rescue syst
 
 ### Web dashboard
 
-[`webui/`](webui/) is a separate package, `drobo-webui`, with a browser dashboard in the spirit of Drobo Dashboard. It covers bays and the front panel, capacity, SMART, temperatures and the fan, network and services, logs, and e-mail alerts. It also has settings for the device name, the fan curve, the capacity lights, bay power, HTTPS with a self-signed certificate, disk sleep, the SMART self-test schedule, software updates, and restart or shut down. It takes about 25 MB with lighttpd and PHP, and nothing else in the kit needs it, so skip it on a stick-only install. Download it from [the webui-v0.3.0 release](https://github.com/georgestephanis/drobo-5n/releases/tag/webui-v0.3.0), and see [`webui/README.md`](webui/README.md).
+[`webui/`](webui/) is a separate package, `drobo-webui`, with a browser dashboard in the spirit of Drobo Dashboard. It covers bays and the front panel, capacity, SMART, temperatures and the fan, network and services, logs, and e-mail alerts. Its Sharing page puts each bay disk on the network as its own share, with per-person access (see File sharing below). It also has settings for the device name, the fan curve, bay power, HTTPS with a self-signed certificate, disk sleep, the SMART self-test schedule, software updates, and restart or shut down. It takes about 25 MB with lighttpd and PHP, and nothing else in the kit needs it, so skip it on a stick-only install. Download it from [the webui-v0.4.0 release](https://github.com/georgestephanis/drobo-5n/releases/tag/webui-v0.4.0), and see [`webui/README.md`](webui/README.md).
 
 ![drobo-webui status page](webui/screenshots/status.png)
 
 ### File sharing (SMB)
 
-Samba works as on any Debian box. [`kit/smb.conf`](kit/smb.conf) is a starting point: SMB2 and newer only, no guest access, the macOS `fruit` options, and one share, `Drobo`, at `/srv/drobo`. Point `path` at your bay disks once they're mounted. `wsdd2` makes the Drobo show up under Network in Windows; macOS finds it through Avahi, which Debian already runs.
+The easy way is the dashboard's **Sharing** page: install Samba (the first command below), turn sharing on, add a person, and every disk you put in a bay is shared as its own folder, read-only until you allow changes. Access is per person, either all disks or chosen ones, and is remembered when a disk is pulled and put back. It was tested on 12 Nov with an exFAT disk from a WD My Book: it was mounted and shared seconds after the bay powered on, a Mac saw it in Finder, writes were refused while it was read-only, and "Safely remove" followed by powering the bay back on shared it again on its own.
+
+To set Samba up by hand instead: Samba works as on any Debian box. [`kit/smb.conf`](kit/smb.conf) is a starting point: SMB2 and newer only, no guest access, the macOS `fruit` options, and one share, `Drobo`, at `/srv/drobo`. Point `path` at your bay disks once they're mounted. `wsdd2` makes the Drobo show up under Network in Windows; macOS finds it through Avahi, which Debian already runs.
 
 ```sh
 sudo apt install --no-install-recommends samba wsdd2       # about 75 MB

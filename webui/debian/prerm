@@ -2,5 +2,7 @@
 set -e
 if [ "$1" = remove ] || [ "$1" = deconfigure ]; then
   systemctl disable --now drobo-webui.service drobo-webui-alerts.timer >/dev/null 2>&1 || true
+  # Unmount shared bay disks and take their shares out of smb.conf (the setting is kept)
+  /usr/lib/drobo-webui/drobo-webui-helper sharing-teardown >/dev/null 2>&1 || true
 fi
 exit 0

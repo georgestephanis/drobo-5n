@@ -4,8 +4,9 @@ import { usePoll, useAction } from '../hooks.js';
 import FrontPanel, { bayLight, powerLight } from './FrontPanel.jsx';
 import { Card, Facts, Icon, Meter, Message, Pill } from './ui.jsx';
 
-export function gaugeUsage(filesystems = [], paths = ['/']) {
-  const fs = filesystems.filter((f) => paths.includes(f.mount));
+// The front panel's capacity lights count the bay disks only (kit/drobo-leds.sh, GAUGE_PATHS=bays).
+export function gaugeUsage(filesystems = []) {
+  const fs = filesystems.filter((f) => f.bay);
   const total = fs.reduce((s, f) => s + f.used + f.free, 0);
   const used = fs.reduce((s, f) => s + f.used, 0);
   return { total, used, free: total - used, pct: total ? (used * 100) / total : 0, fs };
@@ -44,7 +45,7 @@ export default function StatusPage({ status, problems, unit, admin }) {
   const s = status.data;
   if (!s) return <div className="loading">Reading the Drobo…</div>;
 
-  const g = gaugeUsage(s.filesystems, s.gaugePaths);
+  const g = gaugeUsage(s.filesystems);
   const gaugeLit = Math.round(g.pct / 10);
   const bySlot = Object.fromEntries((s.disks || []).map((d) => [d.slot, d]));
   const fan = s.pmu?.fanActual;
@@ -73,7 +74,9 @@ export default function StatusPage({ status, problems, unit, admin }) {
             </div>
             <Meter value={g.pct} label="Space used" />
             <p className="hint">
-              The front panel's blue lights show {g.fs.map((f) => f.mount).join(' + ') || 'nothing'}: {Math.round(g.pct)}% used.
+              {g.fs.length
+                ? <>The bay disks: {g.fs.map((f) => f.mount).join(' + ')}. The front panel's blue lights show {Math.round(g.pct)}% used.</>
+                : <>No disk in the bays is mounted, so the front panel's blue lights are off. Internal storage is below.</>}
             </p>
           </div>
           {s.filesystems.filter((f) => !g.fs.includes(f)).length > 0 && (

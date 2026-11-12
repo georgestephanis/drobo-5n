@@ -67,4 +67,4 @@ Notes on probing: an `i2cget` read of register 8 or above fails, and a write to 
 
 ## A status service
 
-[`kit/drobo-leds.sh`](../kit/drobo-leds.sh) is a small shell service that drives all of these from system state: bays from presence and power, power from `systemctl is-system-running`, activity from `/proc/diskstats`, and the gauge from filesystem use.
+[`kit/drobo-leds.sh`](../kit/drobo-leds.sh) is a small shell service that drives all of these from system state: bays from presence and power, power from `systemctl is-system-running`, activity from `/proc/diskstats`, and the gauge from how full the bay disks' filesystems are (internal storage isn't counted).

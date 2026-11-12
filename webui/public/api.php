@@ -74,7 +74,6 @@ try {
                 'services' => Hardware::services(),
                 'bays' => $priv['bays'],
                 'pmu' => $priv['pmu'],
-                'gaugePaths' => $priv['gaugePaths'],
             ]);
 
         case 'GET disks':
@@ -113,11 +112,6 @@ try {
                 ['FLOOR', 'SOC_LO', 'SOC_HI', 'DISK_LO', 'DISK_HI']
             )));
 
-        case 'POST settings/gauge':
-            $paths = body()['paths'] ?? [];
-            is_array($paths) || out(['error' => 'paths must be a list'], 400);
-            out(Helper::call('set-gauge', array_map('strval', array_values($paths))));
-
         case 'POST settings/password':
             $b = body();
             out(Helper::call('set-password', [], ['current' => (string) ($b['current'] ?? ''), 'new' => (string) ($b['new'] ?? '')]));
@@ -138,6 +132,35 @@ try {
         case 'POST settings/disks':
             $b = body();
             out(Helper::call('set-disks', [(string) (int) ($b['spindownMinutes'] ?? 0), (string) ($b['smartSchedule'] ?? '')], null, 60));
+
+        case 'GET sharing':
+            out(Helper::call('sharing', [], null, 60));
+
+        case 'POST sharing':
+            out(Helper::call('sharing-enable', [!empty(body()['on']) ? 'on' : 'off'], null, 300));
+
+        case 'POST sharing/disk':
+            $b = body();
+            $uuid = (string) ($b['uuid'] ?? '');
+            out(match ((string) ($b['action'] ?? '')) {
+                'writable' => Helper::call('disk-set', [$uuid, 'writable', !empty($b['on']) ? 'on' : 'off'], null, 180),
+                'rename' => Helper::call('disk-set', [$uuid, 'name', (string) ($b['name'] ?? '')], null, 180),
+                'eject' => Helper::call('disk-eject', [$uuid], null, 180),
+                'forget' => Helper::call('disk-forget', [$uuid]),
+                default => out(['error' => 'Unknown disk action.'], 400),
+            });
+
+        case 'POST sharing/user':
+            $b = body();
+            $action = (string) ($b['action'] ?? '');
+            in_array($action, ['add', 'access', 'password', 'remove'], true) || out(['error' => 'Unknown action.'], 400);
+            out(Helper::call('smb-user', [$action], [
+                'name' => (string) ($b['name'] ?? ''),
+                'password' => (string) ($b['password'] ?? ''),
+                'all' => !empty($b['all']),
+                'disks' => array_values(array_map('strval', (array) ($b['disks'] ?? []))),
+                'readOnly' => !empty($b['readOnly']),
+            ], 60));
 
         case 'GET https':
             out(Https::info());

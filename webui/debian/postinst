@@ -8,6 +8,29 @@ if [ "$1" = configure ]; then
   chown root:www-data /etc/drobo-webui/config.json
   chmod 0640 /etc/drobo-webui/config.json
   install -d -m 0755 /var/lib/drobo-webui
+  # Sharing page: bay disk shares are used through this account; disks are mounted under /srv/disks
+  if ! getent passwd drobo-share >/dev/null; then
+    useradd --system --user-group --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin \
+      --comment 'drobo-webui shared disks' drobo-share
+  fi
+  install -d -m 0755 /srv/disks
+  if [ ! -e /etc/drobo-webui/sharing.json ]; then
+    echo '{"enabled": false}' > /etc/drobo-webui/sharing.json
+  fi
+  chown root:www-data /etc/drobo-webui/sharing.json
+  chmod 0640 /etc/drobo-webui/sharing.json
+  udevadm control --reload 2>/dev/null || true
+  # Capacity lights: only the bay disks (kit drobo-leds.sh understands GAUGE_PATHS=bays)
+  if [ -f /etc/default/drobo-leds ] && grep -q '^GAUGE_PATHS=' /etc/default/drobo-leds \
+     && ! grep -q '^GAUGE_PATHS=bays$' /etc/default/drobo-leds; then
+    if grep -q 'on_bays' /usr/local/sbin/drobo-leds 2>/dev/null; then
+      cp -p /etc/default/drobo-leds /etc/default/drobo-leds.bak
+      sed -i 's/^GAUGE_PATHS=.*/GAUGE_PATHS=bays/' /etc/default/drobo-leds
+      systemctl try-restart drobo-leds.service || true
+    else
+      echo "drobo-webui: update drobo-leds from the kit to have the capacity lights count only the bay disks"
+    fi
+  fi
   install -d -m 0700 -o www-data -g www-data /var/lib/drobo-webui/web /var/lib/drobo-webui/sessions
   chmod 0440 /etc/sudoers.d/drobo-webui
   visudo -cf /etc/sudoers.d/drobo-webui >/dev/null

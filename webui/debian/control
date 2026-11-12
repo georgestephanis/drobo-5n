@@ -2,12 +2,14 @@ Package: drobo-webui
 Version: @VERSION@
 Architecture: all
 Maintainer: George Stephanis <george@bigorangelab.com>
-Depends: lighttpd, lighttpd-mod-openssl, openssl, php-cgi, php-cli, sudo, smartmontools, hdparm, gpiod, iproute2, systemd
+Depends: lighttpd, lighttpd-mod-openssl, openssl, php-cgi, php-cli, sudo, smartmontools, hdparm, gpiod, iproute2, systemd, udev, util-linux, passwd
+Suggests: samba, wsdd2
 Section: admin
 Priority: optional
 Homepage: https://github.com/georgestephanis/drobo-5n
 Description: Web dashboard for a Drobo 5N running Debian
  Optional status page and settings for the drobo-5n kit: bays, disks and SMART,
  capacity, temperatures and fan, network, services, logs, e-mail alerts, bay
- power, device name, HTTPS with a self-signed certificate, fan and capacity-gauge settings, reboot and shut down.
+ power, device name, HTTPS with a self-signed certificate, fan settings, reboot and shut down,
+ and network sharing of bay disks through Samba with per-person access.
  Needs about 25 MB with its dependencies; the base kit works without it.

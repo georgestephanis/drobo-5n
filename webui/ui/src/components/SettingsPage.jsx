@@ -19,7 +19,6 @@ export default function SettingsPage({ reloadSession }) {
         <General data={data} onSaved={() => { load(); reloadSession(); }} />
         <DateTime data={data} onSaved={load} />
         <Fan data={data} />
-        <Gauge data={data} />
         <DiskCare data={data} onSaved={load} />
         <Password />
         <Alerts data={data} onSaved={load} />
@@ -191,33 +190,6 @@ function Fan({ data }) {
           <Field label="Disks high (°C)"><input type="number" value={f.DISK_HI} onChange={num('DISK_HI')} /></Field>
         </div>
         <div className="row"><button className="primary" disabled={act.busy}>Save</button></div>
-        <Message state={act} />
-      </form>
-    </Card>
-  );
-}
-
-function Gauge({ data }) {
-  const [paths, setPaths] = useState(data.gaugePaths.filter((p) => data.mountPoints.includes(p)));
-  const [act, run] = useAction();
-  const toggle = (p) => setPaths(paths.includes(p) ? paths.filter((x) => x !== p) : [...paths, p]);
-  const save = (e) => {
-    e.preventDefault();
-    run(() => api.post('settings/gauge', { paths }), 'Saved; the front panel lights restarted.');
-  };
-  return (
-    <Card title="Capacity lights">
-      <form onSubmit={save} className="form">
-        <p className="hint">The ten blue lights on the front show how full these filesystems are, added together.</p>
-        <div className="checks">
-          {data.mountPoints.map((p) => (
-            <label key={p} className="check">
-              <input type="checkbox" checked={paths.includes(p)} onChange={() => toggle(p)} />
-              <span>{p}</span>
-            </label>
-          ))}
-        </div>
-        <div className="row"><button className="primary" disabled={act.busy || !paths.length}>Save</button></div>
         <Message state={act} />
       </form>
     </Card>

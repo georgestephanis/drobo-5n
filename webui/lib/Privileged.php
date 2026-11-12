@@ -74,6 +74,17 @@ final class Privileged
 
     public static function setBayPower(int $bay, bool $on): void
     {
+        if (!$on) {
+            // Detach the disk from Linux first. Otherwise the kernel keeps sdX through the power cut and
+            // only re-checks it at power-on, so nothing (udev, the Sharing page) sees it come back.
+            foreach (Hardware::disks() as $d) {
+                if ($d['slot'] === "bay$bay" && is_file("/sys/block/{$d['name']}/device/delete")) {
+                    Shell::run(['sync'], null, 60);
+                    @file_put_contents("/sys/block/{$d['name']}/device/delete", '1');
+                }
+            }
+            usleep(500000);
+        }
         [$code, , $err] = Shell::run(['gpioset', '-t0', "bay$bay-power=" . ($on ? '1' : '0')], null, 5);
         if ($code !== 0) {
             throw new \RuntimeException("gpioset failed: $err");

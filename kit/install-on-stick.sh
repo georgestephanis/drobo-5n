@@ -44,8 +44,8 @@ install -m 644 "$here/drobo-watchdog.conf" /etc/systemd/system.conf.d/drobo-watc
 install -m 755 "$here/postinst-hook" /etc/kernel/postinst.d/zz-drobo
 install -m 755 "$here/postinst-hook" /etc/initramfs/post-update.d/drobo
 install -m 755 "$here/initramfs-fsck-ext2" /etc/initramfs-tools/hooks/drobo-fsck-ext2
-install -m 644 "$here/drobo-fan.service" "$here/drobo-bays.service" "$here/drobo-leds.service" "$here/drobo-boot-ok.service" "$here/drobo-powerbtn.service" /etc/systemd/system/
-systemctl enable drobo-fan.service drobo-bays.service drobo-leds.service drobo-boot-ok.service drobo-powerbtn.service
+install -m 644 "$here/drobo-fan.service" "$here/drobo-bays.service" "$here/drobo-bays-watch.service" "$here/drobo-leds.service" "$here/drobo-boot-ok.service" "$here/drobo-powerbtn.service" /etc/systemd/system/
+systemctl enable drobo-fan.service drobo-bays.service drobo-bays-watch.service drobo-leds.service drobo-boot-ok.service drobo-powerbtn.service
 echo i2c-dev > /etc/modules-load.d/i2c-dev.conf                     # the capacity gauge is driven from user space
 echo drivetemp > /etc/modules-load.d/drivetemp.conf
 echo blacklist pata_marvell > /etc/modprobe.d/drobo-no-pata.conf     # the 88SE9122s' unused PATA side

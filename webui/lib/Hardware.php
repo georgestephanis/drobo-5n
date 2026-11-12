@@ -96,6 +96,7 @@ final class Hardware
                 'device' => $src,
                 'mount' => $mnt,
                 'type' => $type,
+                'bay' => self::onBayDisks($src),
                 'readOnly' => in_array('ro', explode(',', $opts), true),
                 'total' => (float) $total,
                 'free' => (float) $free,
@@ -105,10 +106,34 @@ final class Hardware
         return $out;
     }
 
-    /** Mount points of real filesystems, for choosing what the capacity gauge counts. */
-    public static function mountPoints(): array
+    /**
+     * Is this block device (/dev/sdc1, /dev/md0, /dev/mapper/x) entirely on bay disks? The front
+     * panel's capacity lights count only these (kit/drobo-leds.sh does the same in shell).
+     */
+    public static function onBayDisks(string $src): bool
     {
-        return array_column(self::filesystems(), 'mount');
+        $real = str_starts_with($src, '/dev/') ? realpath($src) : false;
+        return $real !== false && self::blockOnBays(basename($real), 0);
+    }
+
+    private static function blockOnBays(string $blk, int $depth): bool
+    {
+        if ($depth > 4 || !preg_match('/^[a-z0-9-]+$/', $blk)) {
+            return false;
+        }
+        if (is_file("/sys/class/block/$blk/partition")) {
+            $blk = basename(dirname((string) realpath("/sys/class/block/$blk")));
+        }
+        $slaves = glob("/sys/block/$blk/slaves/*") ?: [];
+        if ($slaves) {  // md, LVM, dm-crypt: on the bays if every member is
+            foreach ($slaves as $sl) {
+                if (!self::blockOnBays(basename($sl), $depth + 1)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return str_starts_with(self::slotOf(realpath("/sys/block/$blk/device") ?: ''), 'bay');
     }
 
     /** Is any partition of /dev/$disk mounted? */

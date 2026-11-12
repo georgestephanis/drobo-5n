@@ -1,0 +1,3 @@
+# drobo-webui: offer every filesystem on an ATA disk to the Sharing page. The service checks that
+# it's in a bay, that it's a filesystem we share and that sharing is on; anything else is left alone.
+ACTION=="add", SUBSYSTEM=="block", KERNEL=="sd*", ENV{ID_BUS}=="ata", ENV{ID_FS_USAGE}=="filesystem", TAG+="systemd", ENV{SYSTEMD_WANTS}+="drobo-webui-disk@%k.service"

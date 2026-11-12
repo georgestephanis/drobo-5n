@@ -1,0 +1,12 @@
+[Unit]
+Description=Drobo 5N: power a bay when a disk is inserted, and off when it is removed
+After=drobo-bays.service
+Wants=drobo-bays.service
+
+[Service]
+ExecStart=/usr/local/sbin/drobo-bays watch
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

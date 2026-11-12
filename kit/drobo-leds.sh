@@ -12,8 +12,10 @@
 #             blinking red = disk listed in $FAILED_FILE (one bay number per line)
 #   power     green = running, yellow = starting or degraded, red = stopping / other
 #   activity  blinks while any disk reads or writes
-#   gauge     percent used of $GAUGE_PATHS (summed), in tenths
-GAUGE_PATHS="/"
+#   gauge     percent used of the bay disks' filesystems (summed), in tenths; all off with none mounted.
+#             GAUGE_PATHS=bays (the default) counts every mounted filesystem on bay disks, including
+#             md/dm volumes made only of them; a list of mount points counts those instead.
+GAUGE_PATHS=bays
 FAILED_FILE=/run/drobo-leds/failed-bays
 POLL=0.5          # activity poll, seconds
 SLOW_EVERY=10     # bays/power/gauge every SLOW_EVERY polls
@@ -74,6 +76,44 @@ gauge_set() {  # number of LEDs lit, 0..10
 }
 
 # --- state readers ---------------------------------------------------------
+# on_bays BLOCK: true if a block device (sdc, sdc1, md0, dm-0) sits only on bay disks.
+# Bays are SATA ports other than the mSATA slot (port 2 of the SoC's controller); USB never counts.
+on_bays() {
+  local b=$1 s p a
+  [ -e "/sys/class/block/$b/partition" ] && b=$(basename "$(dirname "$(readlink -f "/sys/class/block/$b")")")
+  if [ -n "$(ls "/sys/block/$b/slaves" 2>/dev/null)" ]; then
+    for s in "/sys/block/$b/slaves/"*; do on_bays "$(basename "$s")" || return 1; done
+    return 0
+  fi
+  p=$(readlink -f "/sys/block/$b/device" 2>/dev/null) || return 1
+  case $p in
+    *.usb/*) return 1 ;;
+    */d00a0000.sata/*) a=${p#*/d00a0000.sata/}; a=${a%%/*}; [ "$(cat "/sys/class/ata_port/$a/port_no" 2>/dev/null)" = 1 ] ;;
+    */0000:01:00.0/*|*/0000:02:00.0/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+gauge_pct() {
+  if [ "$GAUGE_PATHS" != bays ]; then
+    # shellcheck disable=SC2086
+    df -P $GAUGE_PATHS 2>/dev/null | awk 'NR > 1 { u += $3; t += $3 + $4 } END { if (t) print int(u * 100 / t); else print 0 }'
+    return
+  fi
+  u=0 t=0 seen=" "
+  # df -P: source size used avail ...; one line per mount, so skip a device already counted
+  while read -r src _ used avail _; do
+    case $src in /dev/*) ;; *) continue ;; esac
+    case $seen in *" $src "*) continue ;; esac
+    seen="$seen$src "
+    on_bays "$(basename "$(readlink -f "$src")")" || continue
+    u=$((u + used)) t=$((t + used + avail))
+  done <<EOF2
+$(df -P -k 2>/dev/null | tail -n +2)
+EOF2
+  [ "$t" -gt 0 ] && echo $((u * 100 / t)) || echo 0
+}
+
 disk_io() { awk '$3 ~ /^(sd[a-z]+|nvme[0-9]+n[0-9]+)$/ { s += $6 + $10 } END { print s + 0 }' /proc/diskstats; }
 
 update_slow() {
@@ -89,8 +129,7 @@ update_slow() {
     starting|initializing|degraded) power_set yellow ;;
     *) power_set red ;;
   esac
-  # shellcheck disable=SC2086
-  pct=$(df -P $GAUGE_PATHS 2>/dev/null | awk 'NR > 1 { u += $3; t += $3 + $4 } END { if (t) print int(u * 100 / t); else print 0 }')
+  pct=$(gauge_pct)
   gauge_set $(( (pct + 5) / 10 ))
 }
 

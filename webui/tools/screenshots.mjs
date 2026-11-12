@@ -2,6 +2,7 @@
 // Node's built-in WebSocket; no dependencies).
 //
 //   DROBO_URL=https://drobo5n.local DROBO_PASSWORD=... node tools/screenshots.mjs
+//   ONLY=sharing.png,status.png limits it to those files.
 //
 // IPv6 addresses are masked before each capture: SLAAC addresses contain the board's MAC.
 import { spawn } from 'node:child_process';
@@ -22,11 +23,12 @@ const SHOTS = [
   { file: 'status-bay.png', page: 'status', width: 1280, height: 980, click: '.fp-bay:nth-of-type(1)' },
   { file: 'status-dark.png', page: 'status', width: 1280, height: 980, dark: true },
   { file: 'disks.png', page: 'disks', width: 1280, height: 760 },
+  { file: 'sharing.png', page: 'sharing', width: 1280, height: 1250 },
   { file: 'system.png', page: 'system', width: 1280, height: 760 },
   { file: 'settings.png', page: 'settings', width: 1280, height: 2300 },
   { file: 'logs.png', page: 'logs', width: 1280, height: 760 },
   { file: 'status-mobile.png', page: 'status', width: 390, height: 1500, mobile: true },
-];
+].filter((s) => !process.env.ONLY || process.env.ONLY.split(',').includes(s.file));
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const profile = mkdtempSync(join(tmpdir(), 'drobo-shots-'));

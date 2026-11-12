@@ -1,0 +1,13 @@
+[Unit]
+Description=drobo-webui: share bay disk filesystem %I
+Documentation=file:///usr/share/doc/drobo-webui/README.md
+# Stops (and so unmounts) when the device goes away
+BindsTo=dev-%i.device
+After=dev-%i.device
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/drobo-webui/drobo-webui-helper disk-attach %I
+ExecStop=/usr/lib/drobo-webui/drobo-webui-helper disk-detach %I
+TimeoutSec=180

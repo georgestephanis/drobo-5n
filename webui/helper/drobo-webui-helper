@@ -61,11 +61,9 @@ $verb = array_shift($args) ?? '';
 try {
     switch ($verb) {
         case 'status':
-            $leds = Privileged::readDefaults('/etc/default/drobo-leds');
             reply([
                 'bays' => Privileged::bays(),
                 'pmu' => Privileged::pmu(),
-                'gaugePaths' => preg_split('/\s+/', trim($leds['GAUGE_PATHS'] ?? '/')) ?: ['/'],
             ]);
 
         case 'smart':
@@ -79,12 +77,9 @@ try {
                 Privileged::readDefaults('/etc/default/drobo-fan') + FAN_DEFAULTS,
                 FAN_DEFAULTS
             ));
-            $leds = Privileged::readDefaults('/etc/default/drobo-leds');
             reply([
                 'hostname' => gethostname(),
                 'fan' => $fan,
-                'gaugePaths' => preg_split('/\s+/', trim($leds['GAUGE_PATHS'] ?? '/')) ?: ['/'],
-                'mountPoints' => Hardware::mountPoints(),
                 'time' => Privileged::timeInfo(),
                 'disks' => Privileged::diskSettings(),
             ]);
@@ -174,17 +169,6 @@ try {
             Shell::run(['systemctl', 'try-restart', 'drobo-fan.service']);
             reply(['fan' => $v]);
 
-        case 'set-gauge':
-            $args || fail('choose at least one filesystem');
-            $mounts = Hardware::mountPoints();
-            foreach ($args as $p) {
-                in_array($p, $mounts, true) || fail("$p is not a mounted filesystem");
-                preg_match('#^/[A-Za-z0-9_./-]*$#', $p) || fail("$p has characters the gauge settings can't hold");
-            }
-            Privileged::setDefaults('/etc/default/drobo-leds', ['GAUGE_PATHS' => implode(' ', array_unique($args))]);
-            Shell::run(['systemctl', 'try-restart', 'drobo-leds.service']);
-            reply(['gaugePaths' => array_values(array_unique($args))]);
-
         case 'bay-power':
             $bay = Config::int($args[0] ?? '', 0, 4, 'Bay');
             $on = match ($args[1] ?? '') {
@@ -194,6 +178,9 @@ try {
             };
             if (!$on) {
                 foreach (Hardware::disks() as $d) {
+                    if ($d['slot'] === "bay$bay") {
+                        Sharing::releaseDisk($d['name']);  // our own shares unmount first
+                    }
                     if ($d['slot'] === "bay$bay" && Hardware::diskMounted($d['name'])) {
                         fail("The disk in bay $bay is in use (mounted or part of an array). Unmount it first.");
                     }
@@ -201,6 +188,71 @@ try {
             }
             Privileged::setBayPower($bay, $on);
             reply(['bay' => $bay, 'powered' => $on]);
+
+        // --- Sharing page: bay disks on the network -------------------------------
+        case 'sharing':
+            reply(['sharing' => Sharing::state()]);
+
+        case 'sharing-enable':
+            $on = match ($args[0] ?? '') {
+                'on' => true,
+                'off' => false,
+                default => fail('sharing-enable on|off'),
+            };
+            $on && !Sharing::sambaInstalled() && fail('Samba is not installed: sudo apt install --no-install-recommends samba wsdd2');
+            Sharing::setEnabled($on);
+            reply(['sharing' => Sharing::state()]);
+
+        case 'sharing-teardown':   // package removal: unmount everything ours, drop the include line
+            fromWeb() && fail('not available from the web UI');
+            foreach (Sharing::bayDevices() as $dev => $p) {
+                Sharing::detach((string) $dev);
+            }
+            Sharing::removeInclude();
+            Shell::run(['systemctl', 'try-reload-or-restart', 'smbd.service']);
+            reply([]);
+
+        case 'disk-attach':   // from drobo-webui-disk@.service (udev), or by hand
+            reply(Sharing::attach($args[0] ?? ''));
+
+        case 'disk-detach':
+            reply(Sharing::detach($args[0] ?? ''));
+
+        case 'disk-set':
+            // disk-set UUID writable on|off  |  disk-set UUID name NEW-NAME
+            $uuid = $args[0] ?? '';
+            preg_match('/^[A-Za-z0-9-]{1,64}$/', $uuid) || fail('bad disk id');
+            match ($args[1] ?? '') {
+                'writable' => Sharing::setWritable($uuid, match ($args[2] ?? '') {
+                    'on' => true, 'off' => false, default => fail('disk-set UUID writable on|off'),
+                }),
+                'name' => Sharing::rename($uuid, (string) ($args[2] ?? '')),
+                default => fail('disk-set UUID writable|name VALUE'),
+            };
+            reply(['sharing' => Sharing::state()]);
+
+        case 'disk-eject':
+            $uuid = $args[0] ?? '';
+            preg_match('/^[A-Za-z0-9-]{1,64}$/', $uuid) || fail('bad disk id');
+            reply(Sharing::eject($uuid));
+
+        case 'disk-forget':
+            $uuid = $args[0] ?? '';
+            preg_match('/^[A-Za-z0-9-]{1,64}$/', $uuid) || fail('bad disk id');
+            Sharing::forget($uuid);
+            reply(['sharing' => Sharing::state()]);
+
+        case 'smb-user':
+            // smb-user add|access|password|remove, details as JSON on stdin
+            $in = stdinJson();
+            match ($args[0] ?? '') {
+                'add' => Sharing::addUser($in),
+                'access' => Sharing::setAccess($in),
+                'password' => Sharing::setPassword($in),
+                'remove' => Sharing::removeUser((string) ($in['name'] ?? '')),
+                default => fail('smb-user add|access|password|remove'),
+            };
+            reply(['sharing' => Sharing::state()]);
 
         case 'config-update':
             $cfg = Config::applyUpdate(Config::load(), stdinJson());

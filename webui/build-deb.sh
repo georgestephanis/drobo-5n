@@ -15,7 +15,7 @@ trap 'rm -rf "$STAGE"' EXIT
 P=$STAGE/pkg
 install -d "$P/DEBIAN" "$P/usr/share/drobo-webui/lib" "$P/usr/share/drobo-webui/public/assets" \
   "$P/usr/lib/drobo-webui" "$P/usr/sbin" "$P/etc/drobo-webui" "$P/etc/sudoers.d" \
-  "$P/lib/systemd/system" "$P/usr/share/doc/drobo-webui"
+  "$P/lib/systemd/system" "$P/usr/lib/udev/rules.d" "$P/usr/share/doc/drobo-webui"
 install -m 0644 lib/*.php "$P/usr/share/drobo-webui/lib/"
 install -m 0644 public/*.php public/favicon.svg "$P/usr/share/drobo-webui/public/"
 install -m 0644 public/assets/app.js public/assets/app.css "$P/usr/share/drobo-webui/public/assets/"
@@ -24,6 +24,7 @@ install -m 0755 sbin/drobo-webui-passwd sbin/drobo-webui-cert "$P/usr/sbin/"
 install -m 0644 etc/lighttpd.conf "$P/etc/drobo-webui/"
 install -m 0440 etc/sudoers "$P/etc/sudoers.d/drobo-webui"
 install -m 0644 systemd/*.service systemd/*.timer "$P/lib/systemd/system/"
+install -m 0644 udev/*.rules "$P/usr/lib/udev/rules.d/"
 install -m 0644 README.md "$P/usr/share/doc/drobo-webui/"
 sed "s/@VERSION@/$VERSION/" debian/control > "$P/DEBIAN/control"
 install -m 0644 debian/conffiles "$P/DEBIAN/"

@@ -7,11 +7,13 @@ import DisksPage from './components/DisksPage.jsx';
 import SystemPage from './components/SystemPage.jsx';
 import SettingsPage from './components/SettingsPage.jsx';
 import LogsPage from './components/LogsPage.jsx';
+import SharingPage from './components/SharingPage.jsx';
 import { Icon } from './components/ui.jsx';
 
 const PAGES = [
   { id: 'status', label: 'Status', icon: 'drobo' },
   { id: 'disks', label: 'Disks', icon: 'disk' },
+  { id: 'sharing', label: 'Sharing', icon: 'share', admin: true },
   { id: 'system', label: 'System', icon: 'chip' },
   { id: 'settings', label: 'Settings', icon: 'gear', admin: true },
   { id: 'logs', label: 'Logs', icon: 'list', admin: true },
@@ -61,7 +63,7 @@ function Shell({ session, page, admin, reloadSession }) {
     reloadSession();
   };
 
-  const Page = { status: StatusPage, disks: DisksPage, system: SystemPage, settings: SettingsPage, logs: LogsPage }[page] || StatusPage;
+  const Page = { status: StatusPage, disks: DisksPage, sharing: SharingPage, system: SystemPage, settings: SettingsPage, logs: LogsPage }[page] || StatusPage;
   const hostname = status.data?.system?.hostname || session.hostname;
   const worst = problems.data?.problems?.[0]?.level;
 
