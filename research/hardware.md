@@ -27,10 +27,30 @@ Mainboard `100-00041-001 Rev 3.0` (assembly `200-00038-005`). Firmware strings s
 
 | Bus | Address | Notes |
 |---|---|---|
-| TWSI0 (`0x11000`) | `0x21` | Registers 0–7 read `00`. Unidentified; possibly an expander. |
-| | `0x50` | EEPROM-like. From U-Boot it starts `01 80 10 11 11 11 41 d0 00 14 00 72 00 c4`, then `ff`. Under Linux with a 1-byte pointer it reads `ff`. Probably board ID or config. |
-| | `0x6E` | Answers `07` for most registers. Unidentified. |
+| TWSI0 (`0x11000`) | `0x21` | PCA9555 driving the ten blue capacity LEDs (`mvBoardBlueLedTwsiAddrGet` returns `0x21`). See [front-panel-leds.md](front-panel-leds.md). |
+| | `0x50` | 8 KB serial EEPROM (24C64-style, two-byte offsets; plain reads wrap every 8192 bytes). It's the **boot SEEPROM**: a list of register writes the Armada XP boot ROM applies at reset, before U-Boot. No serial number or MAC is in it. See below. |
+| | `0x6E` | SMBus clock generator, almost certainly an IDT/ICS PCIe/SATA reference clock. It only answers block reads, so byte reads return its byte count (`07`) for every register. The block reads `ff 00 40 31 43 07`: byte 3 `0x31` fits ICS's revision/vendor layout (vendor 1), and byte 5 `07` is the byte-count register's default. Linux doesn't need it; leave it alone. |
 | TWSI1 (`0x11100`) | `0x20`, `0x23` | PCA9555 expanders on the **backplane**, only present when it's connected. See [backplane-and-bays.md](backplane-and-bays.md). |
+
+All of this was read on 11 Nov with `i2c-tools` (`i2cdetect -r`, `i2cget`, and `i2ctransfer -y 0 r256@0x50`, which reads from the EEPROM's current pointer without writing an address). Nothing was written.
+
+### The boot SEEPROM at `0x50`
+
+Its contents are big-endian (address, value) pairs, ended by `ff`. Two lists are stored:
+
+| Register | Value | What it is |
+|---|---|---|
+| `0xD0040014` | `0x00000000` | PCIe 0 BAR setup |
+| `0xD0041804` | `0x00000001` | PCIe 0 BAR 1 control |
+| `0xD0040018` | `0x00000004` | PCIe 0 BAR 1 |
+| `0xD004001C` | `0x00000000` | PCIe 0 BAR 1, high |
+| `0xD0041808` | `0x00000000` | PCIe 0 BAR 2 control (off) |
+| `0xD0040020` | `0x00000004` | PCIe 0 BAR 2 |
+| `0xD0040024` | `0x00000000` | PCIe 0 BAR 2, high |
+| `0xD0018010` | `0x11111141` | MPP control 4: pin functions for MPP 32–39 |
+| `0xD0001400` | `0x7200C400` | SDRAM configuration |
+
+The second, shorter list holds only the last two entries. That pair is exactly the stock firmware's `bootRegisterList`: at start-up `bootSEEPROMInit` prints "Checking boot register values in serialEEPROM", compares, and rewrites the EEPROM if they differ. So vxWorks owns this chip. Linux never touches it, and it should stay that way: a bad entry here would change pin functions or DRAM set-up before U-Boot runs.
 
 ## Headers and footprints
 

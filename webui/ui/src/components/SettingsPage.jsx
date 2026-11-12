@@ -17,6 +17,7 @@ export default function SettingsPage({ reloadSession }) {
       <h1 className="page-title">Settings</h1>
       <div className="grid two">
         <General data={data} onSaved={() => { load(); reloadSession(); }} />
+        <DateTime data={data} onSaved={load} />
         <Fan data={data} />
         <Gauge data={data} />
         <Password />
@@ -67,6 +68,100 @@ function General({ data, onSaved }) {
       </form>
     </Card>
   );
+}
+
+function DateTime({ data, onSaved }) {
+  const t = data.time;
+  const [tz, setTz] = useState(t.timezone);
+  const [ntp, setNtp] = useState(t.ntp);
+  const [servers, setServers] = useState(t.servers.join(' '));
+  const [manual, setManual] = useState('');
+  const [act, run] = useAction();
+  // The Drobo's clock, ticking locally from the offset seen when the page loaded.
+  const [offset] = useState(() => t.now * 1000 - Date.now());
+  const [now, setNow] = useState(() => Date.now() + offset);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now() + offset), 1000);
+    return () => clearInterval(id);
+  }, [offset]);
+
+  const fmt = (ms, zone) => new Date(ms).toLocaleString(undefined, { timeZone: zone, dateStyle: 'medium', timeStyle: 'medium' });
+  const drift = Math.round(offset / 1000);
+  const list = servers.split(/[\s,]+/).filter(Boolean);
+
+  const save = (e) => {
+    e.preventDefault();
+    run(async () => {
+      if (tz !== t.timezone) await api.post('settings/timezone', { timezone: tz });
+      if (ntp !== t.ntp || list.join(' ') !== t.servers.join(' ')) await api.post('settings/ntp', { on: ntp, servers: list });
+      onSaved();
+    }, 'Saved.');
+  };
+  const setClock = (epochMs) => run(async () => {
+    await api.post('settings/time', { epoch: Math.round(epochMs / 1000) });
+    onSaved();
+  }, 'Clock set.');
+
+  return (
+    <Card title="Date and time">
+      <form onSubmit={save} className="form">
+        <p className="clock">
+          <strong>{fmt(now, t.timezone)}</strong>{' '}
+          <span className={`pill ${t.ntp ? (t.synchronized ? 'ok' : 'warning') : 'muted'}`}>
+            {t.ntp ? (t.synchronized ? `synced${t.currentServer ? ` with ${t.currentServer}` : ''}` : 'not synced yet') : 'network time off'}
+          </span>
+        </p>
+        {Math.abs(drift) >= 60 && (
+          <p className="msg warning">The Drobo's clock is {Math.abs(drift)} s {drift > 0 ? 'ahead of' : 'behind'} this computer's.</p>
+        )}
+        <Field label="Time zone">
+          <select value={tz} onChange={(e) => setTz(e.target.value)}>
+            {t.timezones.map((z) => <option key={z} value={z}>{z.replace(/_/g, ' ')}</option>)}
+          </select>
+        </Field>
+        <label className="check">
+          <input type="checkbox" checked={ntp} onChange={(e) => setNtp(e.target.checked)} />
+          <span>Set the clock from the internet (network time)</span>
+        </label>
+        {ntp && (
+          <Field label="Time servers" hint={`Space-separated. Leave empty for Debian's defaults (${t.defaultServers.slice(0, 2).join(', ')}, …).`}>
+            <input value={servers} onChange={(e) => setServers(e.target.value)} placeholder="pool.ntp.org or your router's address" />
+          </Field>
+        )}
+        <div className="row"><button className="primary" disabled={act.busy}>Save</button></div>
+        {!t.ntp && (
+          <>
+            <Field label="Set the clock by hand" hint={`In the Drobo's time zone (${t.timezone}). Network time must be off and saved first.`}>
+              <div className="row">
+                <input type="datetime-local" step="1" value={manual} onChange={(e) => setManual(e.target.value)} />
+                <button type="button" disabled={act.busy || !manual} onClick={() => setClock(zonedToEpoch(manual, t.timezone))}>Set</button>
+                <button type="button" disabled={act.busy} onClick={() => setClock(Date.now())}>Use this computer's time</button>
+              </div>
+            </Field>
+          </>
+        )}
+        <Message state={act} />
+      </form>
+    </Card>
+  );
+}
+
+/** "YYYY-MM-DDTHH:MM[:SS]" read as wall time in `zone`, to epoch milliseconds. */
+function zonedToEpoch(local, zone) {
+  const wall = Date.parse(`${local.length === 16 ? `${local}:00` : local}Z`);
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  // The zone's offset at a moment: show it in the zone and compare with UTC.
+  const offsetAt = (ms) => {
+    const p = Object.fromEntries(fmt.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+    return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - ms;
+  };
+  // Two passes, so a time just after a daylight-saving change uses the offset in force then.
+  let ms = wall - offsetAt(wall);
+  ms = wall - offsetAt(ms);
+  return ms;
 }
 
 function Fan({ data }) {

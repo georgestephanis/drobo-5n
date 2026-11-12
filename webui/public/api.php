@@ -93,6 +93,19 @@ try {
         case 'POST settings/hostname':
             out(Helper::call('set-hostname', [(string) (body()['hostname'] ?? '')]));
 
+        case 'POST settings/timezone':
+            out(Helper::call('set-timezone', [(string) (body()['timezone'] ?? '')]));
+
+        case 'POST settings/ntp':
+            $b = body();
+            $servers = $b['servers'] ?? [];
+            is_array($servers) || out(['error' => 'servers must be a list'], 400);
+            out(Helper::call('set-ntp', array_merge([!empty($b['on']) ? 'on' : 'off'],
+                array_map('strval', array_values($servers)))));
+
+        case 'POST settings/time':
+            out(Helper::call('set-time', [(string) (int) (body()['epoch'] ?? 0)]));
+
         case 'POST settings/fan':
             $b = body();
             out(Helper::call('set-fan', array_map(

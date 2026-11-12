@@ -188,6 +188,49 @@ final class Privileged
         rename("$file.new", $file);
     }
 
+    /** Drop-in the web UI writes when you pick your own NTP servers. */
+    public const NTP_DROPIN = '/etc/systemd/timesyncd.conf.d/drobo-webui.conf';
+
+    /** Clock, timezone and network-time state from timedatectl (no changes). */
+    public static function timeInfo(): array
+    {
+        $kv = static function (array $argv): array {
+            $out = [];
+            foreach (explode("\n", (string) Shell::out($argv)) as $l) {
+                if (str_contains($l, '=')) {
+                    [$k, $v] = explode('=', $l, 2);
+                    $out[$k] = $v;
+                }
+            }
+            return $out;
+        };
+        $t = $kv(['timedatectl', 'show']);
+        $sync = $kv(['timedatectl', 'show-timesync']);
+        $servers = [];
+        if (is_readable(self::NTP_DROPIN)
+            && preg_match('/^NTP=(.*)$/m', (string) file_get_contents(self::NTP_DROPIN), $m)) {
+            $servers = preg_split('/\s+/', trim($m[1]), -1, PREG_SPLIT_NO_EMPTY);
+        }
+        return [
+            'timezone' => $t['Timezone'] ?? date_default_timezone_get(),
+            'ntp' => ($t['NTP'] ?? 'no') === 'yes',
+            'synchronized' => ($t['NTPSynchronized'] ?? 'no') === 'yes',
+            'rtc' => $t['RTCTimeUSec'] ?? null,
+            'now' => time(),
+            'servers' => $servers,
+            'defaultServers' => preg_split('/\s+/', trim($sync['FallbackNTPServers'] ?? ''), -1, PREG_SPLIT_NO_EMPTY),
+            'currentServer' => $sync['ServerName'] ?? null,
+            'timezones' => array_values(array_filter(explode("\n", (string) Shell::out(['timedatectl', 'list-timezones'])))),
+        ];
+    }
+
+    /** A host name or IP address, as accepted for an NTP server. */
+    public static function validNtpServer(string $s): bool
+    {
+        return (bool) (filter_var($s, FILTER_VALIDATE_IP)
+            || (strlen($s) <= 253 && preg_match('/^(?=.*[a-z])[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i', $s)));
+    }
+
     /** KEY=value pairs from a shell defaults file (simple assignments only). */
     public static function readDefaults(string $file): array
     {

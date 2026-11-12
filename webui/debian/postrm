@@ -4,6 +4,13 @@ if [ "$1" = purge ]; then
   rm -f /etc/drobo-webui/config.json /etc/drobo-webui/config.json.new
   rmdir /etc/drobo-webui 2>/dev/null || true
   rm -rf /var/lib/drobo-webui /run/drobo-webui
+  # Time servers chosen in Settings: back to Debian's defaults
+  if [ -e /etc/systemd/timesyncd.conf.d/drobo-webui.conf ]; then
+    rm -f /etc/systemd/timesyncd.conf.d/drobo-webui.conf
+    systemctl try-restart systemd-timesyncd.service 2>/dev/null || true
+  fi
+  rm -f /etc/systemd/timesyncd.conf.d/drobo-webui.conf.bak
+  rmdir /etc/systemd/timesyncd.conf.d 2>/dev/null || true
 fi
 systemctl daemon-reload 2>/dev/null || true
 exit 0

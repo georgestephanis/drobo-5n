@@ -25,7 +25,7 @@ The fan commands come from vxWorks' `pmuFanDefault`, `pmuFanTarget` and `pmuFanA
 - a boot-on-battery counter
 - AC/DC voltage
 
-Which character selects which variable isn't mapped yet. vxWorks' `bspThermalMonitor` logs "PMU is Signalling OVERTEMP".
+Which name selects which variable is mapped in [the variable map](#the-variable-map) below. vxWorks' `bspThermalMonitor` logs "PMU is Signalling OVERTEMP".
 
 Only one program should talk to the port at a time; two at once got jumbled replies. [`drobo-pmu.sh`](../kit/drobo-pmu.sh) takes a lock before it sends anything.
 
@@ -62,6 +62,32 @@ Info requests, also read-only:
 - `B` gives battery-backup statistics, six numbers (`18,0,0,0,0,1`; after a power cut the first went back to 1).
 - `R` gives the shutdown reason (`0x0000,--`).
 - `D` gives temperatures: maximum and average disk, fan, sampling period, five slots, CPU and PMU.
+
+### The variable map
+
+The names come from vxWorks' callers of `pmuGet`, `pmuSet` and `pmuVarDo`, each of which loads a name string first. The second argument is an index into `pOpList` (`=@~x`), so vxWorks reads most of these with `@.` (hex). Every value is 16 bits. A scan of every letter on 11 Nov (select, then `=.`) found these 21 single-letter names: `a b d e f g h o r s t v w x z B D L R X Y`. Any other letter is acknowledged but its read returns `#?`. The scan only read; nothing was set.
+
+| Name | vxWorks function | Value on 11 Nov | Reading |
+|---|---|---|---|
+| `a` | `pmuVoltageGet` | 11965 | Input, mV |
+| `v` | `pmuVoltageGet` | 4155 | Battery, mV |
+| `b` | `vxUtilAMIT` ("PowerBounceDelay was: %d ms") | 3000 | Power bounce delay, ms |
+| `h` | `sysPmuInit` | 4000 | Hibernation delay, PMU ticks (U-Boot's `pv` list names it) |
+| `L` | `pmuSnoozeDelay` | 1500 | Snooze delay |
+| `s` | `pmuShutdownTimerRemaining` | `0xFFFF` | No shutdown countdown running |
+| `o` | `pmuThermalAbort` | 0 | Over-temperature abort not triggered |
+| `D` | `pmuThermalConfig` | 0 | Thermal config flags |
+| `B` | `pmuSelfRefreshConfigCheck` | 3 | Boot-on-battery counter. The same function prints "This Optimus Prime Board Supports Self-Refresh", which is the battery-backed DRAM cache. |
+| `w` | `pmuGenWordGet` / `Set` | `0x0103` | A general-purpose word vxWorks keeps in the PMU |
+| `X` | `pmuSysFlagGet` | `0x1603` | System flags (`0x40` = on battery) |
+| `R` | `pmuTempSensorGet` | | Raw temperature table, read with `~.+` |
+| `Cd` `Cc` `Cp` | `pmuTempDisk`, `pmuTempCPU`, `pmuTempPMU` | `0x2865`, `0x3B0A`, `0x2D` | Disk, CPU and PMU temperatures |
+| `Sd` `Sc` `Sp` | `pmuSetPoint…` | `0x3231`, `0x4650`, `0x4650` | Fan set points |
+| `Td` `Tc` `Tp` | `pmuWarnThresh…` | `0x0637`, `0x2865`, `0x5307` | Over-temperature warning thresholds |
+
+`Cp` reads 45, a plain °C value that matches `D`. For the other two-letter names, the high byte looks like °C: `Cc` 59 (the CPU while vxWorks still fed it), `Sc` and `Sp` 70, `Tp` 83 and `Sd` 50. `Td` (6) and `Tc` (40, the same raw value as `Cd`) don't fit that reading, so treat these as unconfirmed. vxWorks sets each of them with a matching `…Give` function (`pmuTempDiskGive` and so on). Debian sends none of them, so the PMU runs on its defaults and on whatever it last heard.
+
+The letters `d e f g r t x z Y` answer as well (192, 0, 7680, 46798, 49, 0, 200, 0, 129) but no vxWorks function names them. By U-Boot's `pv` list they're probably Power Good Delay, Fake Disk Temp (`f` = `0x1E00`, 30 °C in the high byte), Temp Read Error, Final Countdown, Dram Valid Flag and the like.
 
 ## The backup battery and power failure
 

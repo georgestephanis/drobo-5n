@@ -78,6 +78,7 @@ try {
                 'fan' => $fan,
                 'gaugePaths' => preg_split('/\s+/', trim($leds['GAUGE_PATHS'] ?? '/')) ?: ['/'],
                 'mountPoints' => Hardware::mountPoints(),
+                'time' => Privileged::timeInfo(),
             ]);
 
         case 'set-hostname':
@@ -96,6 +97,47 @@ try {
             file_put_contents('/etc/hosts', $hosts);
             Shell::run(['systemctl', 'try-restart', 'avahi-daemon.service']);
             reply(['hostname' => $name, 'previous' => $old]);
+
+        case 'set-timezone':
+            $tz = $args[0] ?? '';
+            $zones = explode("\n", (string) Shell::out(['timedatectl', 'list-timezones']));
+            ($tz !== '' && in_array($tz, $zones, true)) || fail('Unknown timezone');
+            [$code, , $err] = Shell::run(['timedatectl', 'set-timezone', $tz]);
+            $code === 0 || fail("timedatectl failed: $err");
+            reply(['timezone' => $tz]);
+
+        case 'set-ntp':
+            // set-ntp on|off [SERVER...]: no servers means Debian's default pool
+            $mode = array_shift($args) ?? '';
+            in_array($mode, ['on', 'off'], true) || fail('set-ntp on|off [SERVER...]');
+            count($args) <= 8 || fail('At most 8 time servers');
+            foreach ($args as $srv) {
+                Privileged::validNtpServer($srv) || fail("Not a valid time server: $srv");
+            }
+            if ($args) {
+                @mkdir(dirname(Privileged::NTP_DROPIN), 0755, true);
+                file_put_contents(Privileged::NTP_DROPIN,
+                    "# Written by drobo-webui (Settings > Date and time)\n[Time]\nNTP=" . implode(' ', $args) . "\n");
+            } elseif (is_file(Privileged::NTP_DROPIN)) {
+                rename(Privileged::NTP_DROPIN, Privileged::NTP_DROPIN . '.bak');
+            }
+            [$code, , $err] = Shell::run(['timedatectl', 'set-ntp', $mode === 'on' ? 'true' : 'false']);
+            $code === 0 || fail("timedatectl failed: $err");
+            if ($mode === 'on') {
+                Shell::run(['systemctl', 'restart', 'systemd-timesyncd.service']);
+            }
+            reply(['ntp' => $mode === 'on', 'servers' => $args]);
+
+        case 'set-time':
+            // set-time EPOCH_SECONDS: only while network time is off (it would undo the change)
+            $t = $args[0] ?? '';
+            ctype_digit($t) || fail('set-time EPOCH_SECONDS');
+            $t = (int) $t;
+            ($t >= 1704067200 && $t < 4102444800) || fail('That date is out of range (2024 to 2099)');
+            Privileged::timeInfo()['ntp'] && fail('Turn network time off before setting the clock by hand');
+            [$code, , $err] = Shell::run(['timedatectl', 'set-time', date('Y-m-d H:i:s', $t)]);
+            $code === 0 || fail("timedatectl failed: $err");
+            reply(['now' => time()]);
 
         case 'set-fan':
             count($args) === 5 || fail('set-fan FLOOR SOC_LO SOC_HI DISK_LO DISK_HI');

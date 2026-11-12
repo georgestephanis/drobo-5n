@@ -100,6 +100,7 @@ try {
     await send('Page.navigate', { url: `${URL}/#/${s.page}` });
     await evaluate('location.reload(), 1');
     await sleep(s.page === 'logs' ? 5000 : 4500);
+    for (let i = 0; i < 30 && await evaluate(`/Loading|Reading the Drobo/.test(document.body.innerText)`); i++) await sleep(500);
     if (s.click) await evaluate(`document.querySelector(${JSON.stringify(s.click)}).dispatchEvent(new MouseEvent('click', { bubbles: true })), 1`);
     await sleep(500);
     await evaluate(MASK);

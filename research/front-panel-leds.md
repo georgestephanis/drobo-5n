@@ -63,7 +63,7 @@ i2cset -y 0 0x21 2 0xff; i2cset -y 0 0x21 3 0x03   # all ten on
 
 Bits 10–15 aren't connected to anything visible. On this unit the two leftmost LEDs are noticeably dimmer than the rest. The PCA9555 has no PWM, so brightness can't be set.
 
-Notes on probing: an `i2cget` read of register 8 or above fails, and a write to register 1 (the read-only input port) is refused; neither means the chip is missing. Bus `i2c-0` also has devices at `0x50` (probably an EEPROM) and `0x6e` (returns `0x07` for every register; unidentified).
+Notes on probing: an `i2cget` read of register 8 or above fails, and a write to register 1 (the read-only input port) is refused; neither means the chip is missing. Bus `i2c-0` also has devices at `0x50` (the boot EEPROM) and `0x6e` (a clock generator); see [hardware.md](hardware.md#ic).
 
 ## A status service
 

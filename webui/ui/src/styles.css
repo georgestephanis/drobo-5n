@@ -213,6 +213,8 @@ button.link { background: none; border: 0; padding: 0; color: inherit; text-deco
 .msg { margin: 0; padding: 8px 12px; border-radius: 6px; font-size: 13px; }
 .msg.ok { background: var(--ok-bg); color: var(--green-dark); }
 .msg.error { background: var(--crit-bg); color: var(--red); }
+.msg.warning { background: var(--warn-bg); color: #a3740a; }
+.clock { margin: 0; font-size: 1.05rem; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .log { margin: 0; max-height: 65vh; overflow: auto; white-space: pre-wrap; word-break: break-word; background: var(--input); border: 1px solid var(--line); border-radius: 6px; padding: 12px; }
 
 /* login */
