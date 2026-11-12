@@ -28,17 +28,21 @@ It needs about 25 MB with its dependencies (lighttpd, PHP). On a system running 
   - E-mail alerts through any SMTP server (STARTTLS, SSL or plain), with a test button.
   - Temperature unit, refresh rate, and an option to let anyone on the network see the status pages without signing in.
   - Dashboard password.
+  - Disk sleep: spin the bay disks down after 10 minutes to 2 hours idle (a udev rule that runs `hdparm -S`, so it also covers disks inserted later).
+  - SMART self-tests: off, a short test every Sunday, or that plus a long test on the 1st of the month (the `-s` schedule on smartd's `DEVICESCAN` line in `/etc/smartd.conf`, which keeps a `.bak`).
+  - Software updates: how many updates are waiting and which are security fixes, "Check now" (`apt-get update`), and "Install updates" (`apt-get upgrade`, keeping your config files). Both run in the background as `drobo-webui-apt`, and the card shows the output. It says when a new kernel needs a restart.
   - Restart and shut down.
 - **Logs:** the journal for the kit's services, SSH, Samba and the kernel.
 - **Alerts:** a timer runs every 5 minutes and mails a problem once when it starts and once when it clears. It covers a failing SMART check, bad sectors, hot disks or processor, a full filesystem, a degraded RAID array, a failed bay, failed services, a low backup battery, a sagging power input, and running on battery.
+  A disk that fails its SMART health check also gets its bay light blinking red: the check writes the bay to `/run/drobo-leds/failed-bays`. It only adds and removes the bays it marked itself, so a bay you list there by hand stays.
 
 ## Install
 
-Download the package from the [releases page](https://github.com/georgestephanis/drobo-5n/releases/tag/webui-v0.1.3), or build it yourself (see [Building](#building)). Then, on the Drobo with the kit already installed:
+Download the package from the [releases page](https://github.com/georgestephanis/drobo-5n/releases/tag/webui-v0.2.0), or build it yourself (see [Building](#building)). Then, on the Drobo with the kit already installed:
 
 ```sh
-wget https://github.com/georgestephanis/drobo-5n/releases/download/webui-v0.1.3/drobo-webui_0.1.3_all.deb
-sudo apt install ./drobo-webui_0.1.3_all.deb
+wget https://github.com/georgestephanis/drobo-5n/releases/download/webui-v0.2.0/drobo-webui_0.2.0_all.deb
+sudo apt install ./drobo-webui_0.2.0_all.deb
 sudo drobo-webui-passwd          # set the dashboard password
 ```
 

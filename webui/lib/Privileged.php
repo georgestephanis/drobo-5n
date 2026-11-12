@@ -405,6 +405,8 @@ final class Privileged
     // --- software updates ------------------------------------------------------
 
     public const APT_UNIT = 'drobo-webui-apt';
+    /** Touched after each successful "Check now": apt leaves unchanged lists with their old dates. */
+    public const APT_STAMP = VAR_DIR . '/apt-checked';
 
     /** What apt would upgrade, from the package lists as they are (no download). */
     public static function updatesInfo(): array
@@ -417,7 +419,8 @@ final class Privileged
             }
         }
         $lists = glob('/var/lib/apt/lists/*_InRelease') ?: [];
-        $checked = $lists ? max(array_map('filemtime', $lists)) : null;
+        $stamps = array_merge(array_map('filemtime', $lists), is_file(self::APT_STAMP) ? [filemtime(self::APT_STAMP)] : []);
+        $checked = $stamps ? max($stamps) : null;
         $state = Shell::out(['systemctl', 'is-active', self::APT_UNIT . '.service']);
         [, $log] = Shell::run(['journalctl', '--no-pager', '-o', 'cat', '-n', '15', '-u', self::APT_UNIT . '.service']);
         $kernels = array_map('basename', glob('/lib/modules/*') ?: []);
@@ -429,7 +432,7 @@ final class Privileged
             'running' => in_array($state, ['active', 'activating', 'reloading'], true),
             'log' => trim((string) $log),
             'rebootNeeded' => is_file('/run/reboot-required') || ($kernels && end($kernels) !== $running),
-            'freeMB' => intdiv((int) disk_free_space('/'), 1048576),
+            'freeMB' => (int) floor((float) disk_free_space('/') / 1048576),   // a float: PHP ints are 32-bit on armhf
         ];
     }
 
@@ -440,7 +443,7 @@ final class Privileged
         in_array($info, ['active', 'activating'], true) && throw new \RuntimeException('An update is already running');
         $apt = ['apt-get', '-q', '-y', '-o', 'Dpkg::Options::=--force-confdef', '-o', 'Dpkg::Options::=--force-confold'];
         $argv = match ($what) {
-            'check' => ['apt-get', '-q', 'update'],
+            'check' => ['apt-get', '-q', '-o', 'APT::Update::Post-Invoke-Success::=touch ' . self::APT_STAMP, 'update'],
             'install' => array_merge($apt, ['upgrade']),
             default => throw new \InvalidArgumentException('updates check|install'),
         };
